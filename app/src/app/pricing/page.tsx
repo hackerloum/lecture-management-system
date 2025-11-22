@@ -9,7 +9,22 @@ import { Footer } from "@/components/landing/Footer";
 import { Navigation } from "@/components/landing/Navigation";
 import { cn } from "@/lib/utils";
 
-const individualPricing = [
+type PricingTier = {
+  name: string;
+  description: string;
+  price: string;
+  cadence: string;
+  features: string[];
+  notIncluded: string[];
+  cta: string;
+  href: string;
+  highlighted?: boolean;
+  badge?: string;
+  lecturers?: string;
+  students?: string;
+};
+
+const individualPricing: PricingTier[] = [
   {
     name: "Free",
     description: "Perfect for trying out the platform",
@@ -82,7 +97,7 @@ const individualPricing = [
   },
 ];
 
-const organizationPricing = [
+const organizationPricing: PricingTier[] = [
   {
     name: "Small Team",
     description: "1-10 Lecturers",
@@ -351,7 +366,7 @@ export default function PricingPage() {
                       </span>
                     )}
                   </div>
-                  {pricingType === "organization" && (
+                  {pricingType === "organization" && tier.lecturers && tier.students && (
                     <div className="mt-3 space-y-1">
                       <p className="text-sm font-semibold text-purple-600 dark:text-purple-400">
                         {tier.lecturers}

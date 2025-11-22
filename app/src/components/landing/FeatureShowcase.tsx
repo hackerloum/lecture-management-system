@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion, type Variants } from "framer-motion";
 import { ArrowRight, Check } from "lucide-react";
 import Link from "next/link";
 
@@ -35,8 +35,8 @@ export const FeatureShowcase = ({
 }: FeatureShowcaseProps) => {
   const shouldReduceMotion = useReducedMotion();
 
-  const baseAnimation = shouldReduceMotion
-    ? {}
+  const baseAnimation: Variants | undefined = shouldReduceMotion
+    ? undefined
     : {
         hidden: { opacity: 0, y: 24 },
         visible: {

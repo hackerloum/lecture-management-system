@@ -1,9 +1,17 @@
-import { motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion, type HTMLMotionProps } from "framer-motion";
 import { ComponentPropsWithoutRef, ReactNode, useEffect, useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
 
-export interface QuickAccessCardProps extends ComponentPropsWithoutRef<"div"> {
+export interface QuickAccessCardProps extends Omit<
+  ComponentPropsWithoutRef<"div">,
+  | "onDrag"
+  | "onDragStart"
+  | "onDragEnd"
+  | "onAnimationStart"
+  | "onAnimationEnd"
+  | "onAnimationIteration"
+> {
   readonly icon: ReactNode;
   readonly title: string;
   readonly description: string;
@@ -27,7 +35,7 @@ export const QuickAccessCard = ({
 
   const enableMotion = hasMounted && !prefersReducedMotion;
 
-  const animationProps = useMemo(
+  const animationProps = useMemo<Partial<HTMLMotionProps<"div">>>(
     () =>
       enableMotion
         ? {
@@ -51,7 +59,7 @@ export const QuickAccessCard = ({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-gradientEnd/70 focus-visible:ring-offset-2",
         className,
       )}
-      {...props}
+      {...(props as Omit<typeof props, "onDrag" | "onDragStart" | "onDragEnd" | "onAnimationStart" | "onAnimationEnd" | "onAnimationIteration">)}
     >
       <div className="absolute inset-y-0 left-0 w-[3px] rounded-full bg-gradient-to-b from-brand-gradientStart to-brand-gradientEnd opacity-0 transition duration-300 group-hover:opacity-100" />
       <div className="flex h-full flex-col gap-4">
