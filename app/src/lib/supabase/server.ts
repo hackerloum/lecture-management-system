@@ -1,0 +1,71 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-return */
+
+import { createServerClient } from "@supabase/ssr";
+import { createClient, type SupabaseClientOptions } from "@supabase/supabase-js";
+import { cookies } from "next/headers";
+
+import { getClientEnv, getServerEnv } from "@/lib/env";
+import type { Database } from "@/types/database";
+
+export type SupabaseServerClient = ReturnType<
+  typeof createSupabaseServerClient
+>;
+
+export const createSupabaseServerClient = (
+  options?: SupabaseClientOptions<string>,
+) => {
+  const cookieStore = cookies();
+  type SetCookieOptions = Parameters<typeof cookieStore.set>[2];
+  type DeleteCookieOptions = Parameters<typeof cookieStore.delete>[0];
+
+  const {
+    NEXT_PUBLIC_SUPABASE_URL: url,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
+  } = getClientEnv();
+
+  return createServerClient<Database>(
+    url,
+    anonKey,
+    {
+      cookies: {
+        get(name: string) {
+          const cookie = cookieStore.get(name);
+          if (!cookie) {
+            return undefined;
+          }
+
+          return cookie.value;
+        },
+        set(name: string, value: string, cookieOptions?: SetCookieOptions) {
+          cookieStore.set(name, value, cookieOptions);
+        },
+        remove(name: string, cookieOptions?: DeleteCookieOptions) {
+          if (typeof cookieOptions === "object" && cookieOptions) {
+            cookieStore.delete({
+              name,
+              ...cookieOptions,
+            });
+            return;
+          }
+
+          cookieStore.delete(name);
+        },
+      },
+    },
+    options,
+  );
+};
+
+export const createSupabaseServiceRoleClient = () => {
+  const { SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey } =
+    getServerEnv();
+
+  if (!serviceRoleKey) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY is required to create the service role client.",
+    );
+  }
+
+  return createClient<Database>(url, serviceRoleKey);
+};
+

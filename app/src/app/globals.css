@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 220 33% 98%;
+  --foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --primary: 245 70% 54%;
+  --primary-foreground: 220 33% 98%;
+  --secondary: 222 47% 96%;
+  --secondary-foreground: 222 47% 16%;
+  --muted: 220 16% 94%;
+  --muted-foreground: 220 15% 45%;
+  --accent: 195 79% 51%;
+  --accent-foreground: 195 100% 96%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 220 14% 85%;
+  --input: 220 14% 82%;
+  --ring: 245 70% 54%;
+  --chart-1: 253 88% 68%;
+  --chart-2: 195 79% 51%;
+  --chart-3: 166 72% 40%;
+  --chart-4: 32 95% 61%;
+  --chart-5: 12 86% 56%;
+  --radius: 0.75rem;
+  --glass-surface: rgba(255, 255, 255, 0.72);
+  --ease-out: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.dark {
+  --background: 228 15% 10%;
+  --foreground: 210 40% 96%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 96%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 96%;
+  --primary: 253 88% 68%;
+  --primary-foreground: 222 47% 11%;
+  --secondary: 226 25% 18%;
+  --secondary-foreground: 210 40% 96%;
+  --muted: 228 19% 23%;
+  --muted-foreground: 215 20% 65%;
+  --accent: 195 79% 51%;
+  --accent-foreground: 195 100% 93%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 222 47% 11%;
+  --border: 222 27% 24%;
+  --input: 222 27% 24%;
+  --ring: 253 88% 68%;
+  --chart-1: 220 70% 50%;
+  --chart-2: 160 60% 45%;
+  --chart-3: 30 80% 55%;
+  --chart-4: 280 65% 60%;
+  --chart-5: 340 75% 55%;
+  --glass-surface: rgba(17, 25, 40, 0.75);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/40;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased transition-colors duration-300 ease-brand;
+    font-feature-settings: "liga" on, "kern" on;
+  }
+
+  ::selection {
+    @apply bg-brand-light/90 text-brand-foreground;
+  }
+}
