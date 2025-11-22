@@ -16,8 +16,6 @@ export const createSupabaseServerClient = async (
   options?: SupabaseClientOptions<string>,
 ) => {
   const cookieStore = await cookies();
-  type SetCookieOptions = Parameters<typeof cookieStore.set>[2];
-  type DeleteCookieOptions = Parameters<typeof cookieStore.delete>[0];
 
   const {
     NEXT_PUBLIC_SUPABASE_URL: url,
@@ -29,31 +27,23 @@ export const createSupabaseServerClient = async (
     anonKey,
     {
       cookies: {
-        get(name: string) {
-          const cookie = cookieStore.get(name);
-          if (!cookie) {
-            return undefined;
-          }
-
-          return cookie.value;
+        getAll() {
+          return cookieStore.getAll();
         },
-        set(name: string, value: string, cookieOptions?: SetCookieOptions) {
-          cookieStore.set(name, value, cookieOptions);
-        },
-        remove(name: string, cookieOptions?: DeleteCookieOptions) {
-          if (typeof cookieOptions === "object" && cookieOptions) {
-            cookieStore.delete({
-              name,
-              ...cookieOptions,
-            });
-            return;
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options),
+            );
+          } catch {
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing
+            // user sessions.
           }
-
-          cookieStore.delete(name);
         },
       },
+      ...options,
     },
-    options,
   ) as unknown as SupabaseServerClient;
 };
 
