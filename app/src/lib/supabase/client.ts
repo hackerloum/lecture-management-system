@@ -14,6 +14,6 @@ export const createSupabaseBrowserClient = (): SupabaseBrowserClient => {
   return createBrowserClient(
     NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  ) as SupabaseBrowserClient;
+  ) as unknown as SupabaseBrowserClient;
 };
 

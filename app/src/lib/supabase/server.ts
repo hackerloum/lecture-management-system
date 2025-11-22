@@ -12,10 +12,10 @@ export type SupabaseServerClient = SupabaseClient<Database>;
 
 export type SupabaseServiceRoleClient = SupabaseClient<Database>;
 
-export const createSupabaseServerClient = (
+export const createSupabaseServerClient = async (
   options?: SupabaseClientOptions<string>,
 ) => {
-  const cookieStore = cookies();
+  const cookieStore = await cookies();
   type SetCookieOptions = Parameters<typeof cookieStore.set>[2];
   type DeleteCookieOptions = Parameters<typeof cookieStore.delete>[0];
 
@@ -54,7 +54,7 @@ export const createSupabaseServerClient = (
       },
     },
     options,
-  ) as SupabaseServerClient;
+  ) as unknown as SupabaseServerClient;
 };
 
 export const createSupabaseServiceRoleClient = () => {
@@ -67,6 +67,6 @@ export const createSupabaseServiceRoleClient = () => {
     );
   }
 
-  return createClient(url, serviceRoleKey) as SupabaseServiceRoleClient;
+  return createClient(url, serviceRoleKey) as unknown as SupabaseServiceRoleClient;
 };
 
