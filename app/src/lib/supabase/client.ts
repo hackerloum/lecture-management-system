@@ -11,9 +11,9 @@ export const createSupabaseBrowserClient = (): SupabaseBrowserClient => {
   const { NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY } =
     getClientEnv();
 
-  return createBrowserClient<Database>(
+  return createBrowserClient(
     NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY,
-  );
+  ) as SupabaseBrowserClient;
 };
 

@@ -6,10 +6,11 @@ import { cookies } from "next/headers";
 
 import { getClientEnv, getServerEnv } from "@/lib/env";
 import type { Database } from "@/types/database";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type SupabaseServerClient = ReturnType<
-  typeof createSupabaseServerClient
->;
+export type SupabaseServerClient = SupabaseClient<Database>;
+
+export type SupabaseServiceRoleClient = SupabaseClient<Database>;
 
 export const createSupabaseServerClient = (
   options?: SupabaseClientOptions<string>,
@@ -23,7 +24,7 @@ export const createSupabaseServerClient = (
     NEXT_PUBLIC_SUPABASE_ANON_KEY: anonKey,
   } = getClientEnv();
 
-  return createServerClient<Database>(
+  return createServerClient(
     url,
     anonKey,
     {
@@ -53,7 +54,7 @@ export const createSupabaseServerClient = (
       },
     },
     options,
-  );
+  ) as SupabaseServerClient;
 };
 
 export const createSupabaseServiceRoleClient = () => {
@@ -66,6 +67,6 @@ export const createSupabaseServiceRoleClient = () => {
     );
   }
 
-  return createClient<Database>(url, serviceRoleKey);
+  return createClient(url, serviceRoleKey) as SupabaseServiceRoleClient;
 };
 
