@@ -1,0 +1,1 @@
+# lecture-management-system
