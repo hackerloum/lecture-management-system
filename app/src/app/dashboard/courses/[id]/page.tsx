@@ -39,8 +39,10 @@ interface CourseData {
   schedule: string;
   room: string;
   nextClass: string;
-  upcomingDeadlines: Array<{ id: number; title: string; date: string; type?: string }>;
-  recentMaterials: Array<{ id: number; title: string; date: string; type?: string }>;
+  syllabus?: string;
+  announcements?: { id: number; title: string; date: string; content: string }[];
+  upcomingDeadlines: { id: number; title: string; date: string; type?: string }[];
+  recentMaterials: { id: number; title: string; date: string; type?: string }[];
 }
 
 const coursesData: Record<string, CourseData> = {
