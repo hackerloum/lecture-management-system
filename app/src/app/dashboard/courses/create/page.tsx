@@ -5,9 +5,6 @@ import {
   ArrowLeft,
   BookOpen,
   Calendar,
-  Clock,
-  Users,
-  MapPin,
   FileText,
   Tag,
   Plus,
@@ -48,7 +45,7 @@ export default function CreateCoursePage() {
   const [newPrerequisite, setNewPrerequisite] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
-  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [collaborators] = useState<Collaborator[]>([]);
   const [selectedColor, setSelectedColor] = useState("from-blue-500 to-cyan-500");
 
   // Dynamic departments and levels
@@ -214,10 +211,11 @@ export default function CreateCoursePage() {
               <div className="grid gap-6 md:grid-cols-2">
                 {/* Course Code */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="course-code" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Course Code *
                   </label>
                   <input
+                    id="course-code"
                     type="text"
                     value={courseCode}
                     onChange={(e) => setCourseCode(e.target.value)}
@@ -229,10 +227,11 @@ export default function CreateCoursePage() {
 
                 {/* Course Name */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="course-name" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Course Name *
                   </label>
                   <input
+                    id="course-name"
                     type="text"
                     value={courseName}
                     onChange={(e) => setCourseName(e.target.value)}
@@ -244,12 +243,13 @@ export default function CreateCoursePage() {
 
                 {/* Department */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="department" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Department *
                   </label>
                   {!showAddDepartment ? (
                     <div className="flex gap-2">
                       <select
+                        id="department"
                         value={department}
                         onChange={(e) => {
                           if (e.target.value === "__add_new__") {
@@ -276,7 +276,6 @@ export default function CreateCoursePage() {
                         onChange={(e) => setNewDepartment(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addDepartment())}
                         placeholder="Enter new department name"
-                        autoFocus
                         className="h-12 flex-1 rounded-xl border border-white/20 bg-white/10 px-4 text-sm backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5"
                       />
                       <button
@@ -302,12 +301,13 @@ export default function CreateCoursePage() {
 
                 {/* Level */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="level" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Level *
                   </label>
                   {!showAddLevel ? (
                     <div className="flex gap-2">
                       <select
+                        id="level"
                         value={level}
                         onChange={(e) => {
                           if (e.target.value === "__add_new__") {
@@ -334,7 +334,6 @@ export default function CreateCoursePage() {
                         onChange={(e) => setNewLevel(e.target.value)}
                         onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addLevel())}
                         placeholder="Enter new level name"
-                        autoFocus
                         className="h-12 flex-1 rounded-xl border border-white/20 bg-white/10 px-4 text-sm backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5"
                       />
                       <button
@@ -360,10 +359,11 @@ export default function CreateCoursePage() {
 
                 {/* Credits */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="credits" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Credits *
                   </label>
                   <input
+                    id="credits"
                     type="number"
                     value={credits}
                     onChange={(e) => setCredits(e.target.value)}
@@ -376,10 +376,11 @@ export default function CreateCoursePage() {
 
                 {/* Max Students */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="max-students" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Max Students *
                   </label>
                   <input
+                    id="max-students"
                     type="number"
                     value={maxStudents}
                     onChange={(e) => setMaxStudents(e.target.value)}
@@ -392,10 +393,11 @@ export default function CreateCoursePage() {
 
               {/* Description */}
               <div className="mt-6">
-                <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                <label htmlFor="description" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                   Course Description *
                 </label>
                 <textarea
+                  id="description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Provide a detailed description of the course..."
@@ -416,10 +418,11 @@ export default function CreateCoursePage() {
               <div className="grid gap-6 md:grid-cols-2">
                 {/* Semester */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="semester" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Semester *
                   </label>
                   <select
+                    id="semester"
                     value={semester}
                     onChange={(e) => setSemester(e.target.value)}
                     className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-sm text-neutral-900 backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5 dark:text-white [&>option]:bg-white [&>option]:text-neutral-900 dark:[&>option]:bg-neutral-800 dark:[&>option]:text-white"
@@ -433,10 +436,11 @@ export default function CreateCoursePage() {
 
                 {/* Schedule */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="schedule" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Schedule *
                   </label>
                   <input
+                    id="schedule"
                     type="text"
                     value={schedule}
                     onChange={(e) => setSchedule(e.target.value)}
@@ -448,10 +452,11 @@ export default function CreateCoursePage() {
 
                 {/* Room */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="room" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Room/Location *
                   </label>
                   <input
+                    id="room"
                     type="text"
                     value={room}
                     onChange={(e) => setRoom(e.target.value)}
@@ -463,10 +468,11 @@ export default function CreateCoursePage() {
 
                 {/* Start Date */}
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="start-date" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Start Date *
                   </label>
                   <input
+                    id="start-date"
                     type="date"
                     value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
@@ -477,10 +483,11 @@ export default function CreateCoursePage() {
 
                 {/* End Date */}
                 <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                  <label htmlFor="end-date" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     End Date *
                   </label>
                   <input
+                    id="end-date"
                     type="date"
                     value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
@@ -500,11 +507,12 @@ export default function CreateCoursePage() {
 
               {/* Prerequisites */}
               <div className="mb-6">
-                <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                <label htmlFor="prerequisites" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                   Prerequisites
                 </label>
                 <div className="flex gap-2">
                   <input
+                    id="prerequisites"
                     type="text"
                     value={newPrerequisite}
                     onChange={(e) => setNewPrerequisite(e.target.value)}
@@ -543,11 +551,12 @@ export default function CreateCoursePage() {
 
               {/* Tags */}
               <div>
-                <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                <label htmlFor="tags" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                   Tags
                 </label>
                 <div className="flex gap-2">
                   <input
+                    id="tags"
                     type="text"
                     value={newTag}
                     onChange={(e) => setNewTag(e.target.value)}

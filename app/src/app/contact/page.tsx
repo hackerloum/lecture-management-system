@@ -4,7 +4,6 @@ import { motion, useReducedMotion } from "framer-motion";
 import {
   Mail,
   Phone,
-  MapPin,
   Clock,
   Send,
   Zap,
@@ -123,10 +122,10 @@ export default function ContactPage() {
               Get In Touch
             </motion.div>
             <h1 className="mb-4 text-4xl font-bold tracking-tight text-neutral-900 dark:text-white sm:text-5xl lg:text-6xl">
-              We're Here to Help
+              We&apos;re Here to Help
               <br />
               <span className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                Let's Talk
+                Let&apos;s Talk
               </span>
             </h1>
             <p className="mx-auto max-w-2xl text-lg text-neutral-600 dark:text-neutral-400">
@@ -175,7 +174,7 @@ export default function ContactPage() {
                 <h2 className="mb-6 text-2xl font-bold text-neutral-900 dark:text-white">
                   Send Us a Message
                 </h2>
-                <form onSubmit={handleSubmit} className="space-y-6">
+                <form onSubmit={(e) => { void handleSubmit(e); }} className="space-y-6">
                   <div>
                     <label
                       htmlFor="name"
@@ -267,7 +266,7 @@ export default function ContactPage() {
 
                   {formStatus === "success" ? (
                     <div className="rounded-xl border border-green-500/30 bg-green-500/10 p-4 text-sm text-green-600 dark:text-green-400">
-                      Thank you! We'll get back to you within 24 hours.
+                      Thank you! We&apos;ll get back to you within 24 hours.
                     </div>
                   ) : null}
 

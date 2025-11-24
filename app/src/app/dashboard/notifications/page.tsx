@@ -6,7 +6,6 @@ import {
   Check,
   CheckCircle,
   Trash2,
-  Filter,
   Search,
   RefreshCw,
   MessageSquare,
@@ -14,14 +13,13 @@ import {
   Calendar,
   AlertCircle,
   BookOpen,
-  Users,
   TrendingUp,
   FileText,
   Clock,
 } from "lucide-react";
-import Link from "next/link";
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 
 interface Notification {
@@ -165,7 +163,7 @@ export default function NotificationsPage() {
   const prefersReducedMotion = useReducedMotion();
   const router = useRouter();
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
-  const [filter, setFilter] = useState<"all" | "unread" | string>("all");
+  const [filter, setFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredNotifications = notifications.filter((notif) => {

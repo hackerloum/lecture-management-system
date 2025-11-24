@@ -11,10 +11,9 @@ import {
   Loader2,
   Shield,
   MapPin,
-  Calendar,
 } from "lucide-react";
-import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
+import { useState, useEffect } from "react";
 
 interface SessionData {
   sessionId: string;
@@ -47,7 +46,8 @@ export default function TokenizedCheckInPage() {
 
   // Validate token on mount
   useEffect(() => {
-    validateToken();
+    void validateToken();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   // Countdown timer
@@ -108,8 +108,9 @@ export default function TokenizedCheckInPage() {
       setTimeRemaining(Math.floor((mockSessionData.expiresAt - Date.now()) / 1000));
       setStep("form");
       
-    } catch (err: any) {
-      setError(err.message || "Invalid or expired attendance link");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Invalid or expired attendance link";
+      setError(errorMessage);
       setStep("error");
     }
   };
@@ -154,8 +155,9 @@ export default function TokenizedCheckInPage() {
       
       setStep("success");
       
-    } catch (err: any) {
-      setError(err.message || "Failed to mark attendance. Please try again.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to mark attendance. Please try again.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -199,7 +201,7 @@ export default function TokenizedCheckInPage() {
               Attendance Check-In
             </h1>
             <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
-              Mark your attendance for today's class
+              Mark your attendance for today&apos;s class
             </p>
           </div>
 
@@ -287,7 +289,7 @@ export default function TokenizedCheckInPage() {
                 </div>
 
                 {/* Attendance Form */}
-                <form onSubmit={handleSubmitAttendance} className="space-y-4">
+                <form onSubmit={(e) => { void handleSubmitAttendance(e); }} className="space-y-4">
                   <div>
                     <label
                       htmlFor="student-id"
@@ -472,7 +474,7 @@ export default function TokenizedCheckInPage() {
                     Access Denied
                   </h2>
                   <p className="text-sm text-red-600 dark:text-red-400">
-                    {error || "This attendance link is invalid or has expired."}
+                    {error ?? "This attendance link is invalid or has expired."}
                   </p>
                 </div>
 
@@ -487,7 +489,7 @@ export default function TokenizedCheckInPage() {
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="mt-1 text-red-500">•</span>
-                      <span>The link was not scanned from the lecturer's QR code</span>
+                      <span>The link was not scanned from the lecturer&apos;s QR code</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="mt-1 text-red-500">•</span>
@@ -502,7 +504,7 @@ export default function TokenizedCheckInPage() {
 
                 <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
                   <p className="text-sm font-medium text-blue-900 dark:text-blue-300">
-                    💡 Please scan the QR code directly from your lecturer's screen
+                    💡 Please scan the QR code directly from your lecturer&apos;s screen
                   </p>
                 </div>
               </motion.div>

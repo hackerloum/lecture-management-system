@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, useReducedMotion, AnimatePresence } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   Brain,
   TrendingUp,
@@ -9,28 +9,17 @@ import {
   Sparkles,
   Target,
   Users,
-  BookOpen,
   Award,
   Clock,
-  Zap,
-  Shield,
-  LineChart,
-  BarChart3,
-  PieChart,
   Activity,
-  Bell,
-  CheckCircle,
-  XCircle,
   ArrowRight,
   RefreshCw,
   Download,
-  Filter,
   Calendar,
   Lightbulb,
-  TrendingDown as Minus,
 } from "lucide-react";
-import Link from "next/link";
 import { useState } from "react";
+
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 
 // Mock AI Insights Data

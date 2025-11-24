@@ -12,10 +12,6 @@ import {
   MessageSquare,
   CheckCircle,
   TrendingUp,
-  Download,
-  Share2,
-  Plus,
-  Edit,
   Star,
   Award,
   BookOpen,
@@ -24,10 +20,30 @@ import {
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 
 // Mock course data
-const coursesData: Record<string, any> = {
+interface CourseData {
+  id: number;
+  code: string;
+  name: string;
+  semester: string;
+  color: string;
+  description: string;
+  students: number;
+  avgGrade: number;
+  progress: number;
+  completedAssignments: number;
+  assignments: number;
+  schedule: string;
+  room: string;
+  nextClass: string;
+  upcomingDeadlines: Array<{ id: number; title: string; date: string; type?: string }>;
+  recentMaterials: Array<{ id: number; title: string; date: string; type?: string }>;
+}
+
+const coursesData: Record<string, CourseData> = {
   "1": {
     id: 1,
     code: "CS 101",
@@ -67,9 +83,9 @@ export default function CourseDetailsPage() {
   const params = useParams();
   const router = useRouter();
   const courseId = params.id as string;
-  const course = coursesData[courseId] || coursesData["1"];
+  const course = coursesData[courseId] ?? coursesData["1"];
 
-  const [activeTab, setActiveTab] = useState<"overview" | "materials" | "announcements" | "students">("overview");
+  const [_activeTab, _setActiveTab] = useState<"overview" | "materials" | "announcements" | "students">("overview");
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
@@ -121,14 +137,14 @@ export default function CourseDetailsPage() {
               
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => router.push(`/dashboard/courses/${courseId}/meet`)}
+                  onClick={() => { void router.push(`/dashboard/courses/${courseId}/meet`); }}
                   className="flex h-12 items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-6 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
                 >
                   <Video className="h-5 w-5" />
                   Start Meeting
                 </button>
                 <button
-                  onClick={() => router.push(`/dashboard/courses/${courseId}/chat`)}
+                  onClick={() => { void router.push(`/dashboard/courses/${courseId}/chat`); }}
                   className="flex h-12 items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-6 text-sm font-semibold backdrop-blur-sm transition hover:bg-white/20 dark:border-white/10 dark:bg-white/5"
                 >
                   <MessageSquare className="h-5 w-5" />
@@ -207,7 +223,7 @@ export default function CourseDetailsPage() {
             >
               <h3 className="mb-4 text-lg font-bold text-neutral-900 dark:text-white">Upcoming Deadlines</h3>
               <div className="space-y-3">
-                {course.upcomingDeadlines.map((deadline: any) => (
+                {course.upcomingDeadlines.map((deadline) => (
                   <div key={deadline.id} className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
                     <CheckCircle className="mt-1 h-5 w-5 text-blue-600 dark:text-blue-400" />
                     <div className="flex-1">
@@ -227,7 +243,7 @@ export default function CourseDetailsPage() {
             >
               <h3 className="mb-4 text-lg font-bold text-neutral-900 dark:text-white">Recent Materials</h3>
               <div className="space-y-3">
-                {course.recentMaterials.map((material: any) => (
+                {course.recentMaterials.map((material) => (
                   <div key={material.id} className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
                     <FileText className="mt-1 h-5 w-5 text-green-600 dark:text-green-400" />
                     <div className="flex-1">

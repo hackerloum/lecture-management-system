@@ -10,7 +10,6 @@ import {
   Award,
   Calendar,
   Download,
-  Filter,
   BarChart3,
   PieChart,
   Activity,
@@ -18,8 +17,8 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 
-import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 import AnalyticsExportModal from "@/components/analytics/AnalyticsExportModal";
+import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 
 // Mock data for charts
 const performanceData = [

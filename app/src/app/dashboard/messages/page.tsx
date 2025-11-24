@@ -9,7 +9,6 @@ import {
   Phone,
   Video,
   Star,
-  Archive,
   Check,
   CheckCheck,
   Circle,

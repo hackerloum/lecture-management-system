@@ -14,12 +14,10 @@ import {
   Users,
   Pin,
   Bell,
-  BellOff,
-  Star,
-  Trash2,
 } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useState } from "react";
+
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 
 // Mock conversations

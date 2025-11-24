@@ -6,8 +6,6 @@ import {
   Users,
   CheckCircle,
   XCircle,
-  Download,
-  Filter,
   Search,
   QrCode,
   Clock,
@@ -22,10 +20,10 @@ import {
   Zap,
   Printer,
 } from "lucide-react";
-import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
-import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 import { QRCodeSVG } from "qrcode.react";
+import { useState, useEffect } from "react";
+
+import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 
 // Mock data
 const courses = [
@@ -64,14 +62,14 @@ export default function AttendancePage() {
   
   // Attendance tracking
   const [presentStudents, setPresentStudents] = useState<number[]>([]);
-  const [recentCheckIns, setRecentCheckIns] = useState<Array<{
+  const [recentCheckIns, setRecentCheckIns] = useState<{
     studentId: number;
     studentName: string;
     time: Date;
-  }>>([]);
+  }[]>([]);
 
   const selectedCourseData = courses.find(c => c.id === selectedCourse);
-  const totalStudents = selectedCourseData?.students || 0;
+  const totalStudents = selectedCourseData?.students ?? 0;
   const presentCount = presentStudents.length;
   const absentCount = totalStudents - presentCount;
   const attendanceRate = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
@@ -114,7 +112,7 @@ export default function AttendancePage() {
       courseName: selectedCourseData?.name,
       url: checkInUrl,
       expiresAt: new Date(Date.now() + totalTimeMs),
-      duration: `${customTimeLimit || timeLimit} ${timeLimitUnit}`,
+      duration: `${customTimeLimit ?? timeLimit} ${timeLimitUnit}`,
     });
     
     return sessionToken;
@@ -165,6 +163,7 @@ export default function AttendancePage() {
       }, 1000);
       return () => clearInterval(timer);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSessionActive, timeRemaining]);
 
   // Simulate student check-in (in real app, this comes from API)
@@ -200,12 +199,11 @@ export default function AttendancePage() {
   };
 
   // Print QR Code
-  const handlePrintQRCode = () => {
+  const handlePrintQRCode = async () => {
     if (!qrCode) return;
 
-    // Create a temporary canvas to generate QR code data URL
-    const canvas = document.createElement('canvas');
-    const QRCodeLib = require('qrcode');
+    // Dynamically import qrcode to generate QR code data URL
+    const QRCodeLib = await import('qrcode');
     
     QRCodeLib.toDataURL(qrCode, {
       width: 400,
@@ -214,7 +212,7 @@ export default function AttendancePage() {
         dark: '#000000',
         light: '#FFFFFF'
       }
-    }, (error: any, url: string) => {
+    }, (error: unknown, url: string) => {
       if (error) {
         console.error('Error generating QR code:', error);
         return;
@@ -368,7 +366,7 @@ export default function AttendancePage() {
             </div>
             
             <div class="validity">
-              ⏰ Valid for: ${customTimeLimit || timeLimit} ${timeLimitUnit}
+              ⏰ Valid for: ${customTimeLimit ?? timeLimit} ${timeLimitUnit}
               <small>Expires: ${new Date(Date.now() + getTotalTimeInMs()).toLocaleString('en-US', { 
                 weekday: 'long',
                 year: 'numeric',
@@ -529,9 +527,9 @@ export default function AttendancePage() {
                 {!isSessionActive ? (
                   <>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <label className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                      <div className="text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                         Time Limit:
-                      </label>
+                      </div>
                       <div className="flex gap-2">
                         {/* Quick Select */}
                         <select
@@ -610,7 +608,7 @@ export default function AttendancePage() {
                       Show QR Code
                     </button>
                     <button
-                      onClick={handlePrintQRCode}
+                      onClick={() => { void handlePrintQRCode(); }}
                       className="flex h-12 items-center gap-2 rounded-xl border border-blue-600/50 bg-blue-600/10 px-6 text-sm font-semibold text-blue-600 backdrop-blur-sm transition hover:bg-blue-600/20 dark:text-blue-400"
                     >
                       <Printer className="h-5 w-5" />
@@ -847,7 +845,7 @@ export default function AttendancePage() {
               </h2>
               <div className="space-y-3">
                 <AnimatePresence mode="popLayout">
-                  {recentCheckIns.map((checkIn, index) => (
+                  {recentCheckIns.map((checkIn) => (
                     <motion.div
                       key={`${checkIn.studentId}-${checkIn.time.getTime()}`}
                       initial={{ opacity: 0, x: 50, scale: 0.9 }}

@@ -3,12 +3,10 @@
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Search,
-  Filter,
   Download,
   Upload,
   Edit,
   Check,
-  X,
   TrendingUp,
   TrendingDown,
   Award,

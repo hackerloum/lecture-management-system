@@ -7,24 +7,17 @@ import {
   Users,
   BookOpen,
   Calendar,
-  Award,
   AlertCircle,
-  CheckCircle2,
   Brain,
   Sparkles,
-  Bell,
   ArrowRight,
   Clock,
   Target,
-  Zap,
-  Star,
   Activity,
   FileText,
   MessageSquare,
   Video,
-  BarChart3,
   Plus,
-  ArrowUpRight,
   MapPin,
   TrendingDown as Minus,
 } from "lucide-react";
@@ -686,7 +679,7 @@ export default function DashboardPage() {
                   ⏰ Upcoming Deadlines
                 </h2>
                 <div className="space-y-4">
-                  {upcomingDeadlines.map((deadline, index) => (
+                  {upcomingDeadlines.map((deadline) => (
                     <div
                       key={deadline.id}
                       className="rounded-xl border border-white/10 bg-white/5 p-4 dark:bg-white/5"

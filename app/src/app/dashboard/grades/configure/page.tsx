@@ -6,14 +6,11 @@ import {
   Plus,
   X,
   Save,
-  Settings,
   Percent,
   Award,
   FileText,
-  Edit,
   Trash2,
   GripVertical,
-  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -91,7 +88,7 @@ export default function ConfigureGradesPage() {
   const [newCategoryWeight, setNewCategoryWeight] = useState(10);
 
   // Edit assignment
-  const [editingAssignment, setEditingAssignment] = useState<{
+  const [_editingAssignment, _setEditingAssignment] = useState<{
     categoryId: string;
     assignmentId: string;
   } | null>(null);
@@ -256,10 +253,11 @@ export default function ConfigureGradesPage() {
 
                 <div className="grid gap-6 md:grid-cols-2">
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                    <label htmlFor="scale-type" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                       Scale Type
                     </label>
                     <select
+                      id="scale-type"
                       value={gradingScale}
                       onChange={(e) => setGradingScale(e.target.value)}
                       className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-sm text-neutral-900 backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5 dark:text-white [&>option]:bg-white [&>option]:text-neutral-900 dark:[&>option]:bg-neutral-800 dark:[&>option]:text-white"
@@ -272,10 +270,11 @@ export default function ConfigureGradesPage() {
                   </div>
 
                   <div>
-                    <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                    <label htmlFor="passing-grade" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                       Passing Grade (%)
                     </label>
                     <input
+                      id="passing-grade"
                       type="number"
                       value={passingGrade}
                       onChange={(e) => setPassingGrade(Number(e.target.value))}
@@ -333,10 +332,11 @@ export default function ConfigureGradesPage() {
                   <div className="mb-6 rounded-2xl border border-purple-500/30 bg-purple-500/10 p-4">
                     <div className="mb-4 grid gap-4 md:grid-cols-2">
                       <div>
-                        <label className="mb-2 block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                        <label htmlFor="category-name" className="mb-2 block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                           Category Name
                         </label>
                         <input
+                          id="category-name"
                           type="text"
                           value={newCategoryName}
                           onChange={(e) => setNewCategoryName(e.target.value)}
@@ -345,10 +345,11 @@ export default function ConfigureGradesPage() {
                         />
                       </div>
                       <div>
-                        <label className="mb-2 block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
+                        <label htmlFor="category-weight" className="mb-2 block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                           Weight (%)
                         </label>
                         <input
+                          id="category-weight"
                           type="number"
                           value={newCategoryWeight}
                           onChange={(e) => setNewCategoryWeight(Number(e.target.value))}

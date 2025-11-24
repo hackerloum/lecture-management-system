@@ -11,12 +11,7 @@ import {
   Users,
   MessageSquare,
   Hand,
-  Settings,
-  Grid,
-  Maximize,
   MoreVertical,
-  Volume2,
-  VolumeX,
   UserPlus,
   Copy,
   Clock,
@@ -69,7 +64,7 @@ export default function MeetingPage() {
 
   const handleEndCall = () => {
     if (confirm("Are you sure you want to leave the meeting?")) {
-      router.push(`/dashboard/courses/${courseId}`);
+      void router.push(`/dashboard/courses/${courseId}`);
     }
   };
 
@@ -114,7 +109,7 @@ export default function MeetingPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(meetingLink);
+                    void navigator.clipboard.writeText(meetingLink);
                     alert("Meeting link copied!");
                   }}
                   className="flex h-10 items-center gap-2 rounded-full bg-white/10 px-4 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
