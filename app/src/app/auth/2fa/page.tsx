@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { useReducedMotion } from "framer-motion";
 
 import { Footer } from "@/components/landing/Footer";
@@ -27,7 +28,9 @@ export default function TwoFactorPage() {
 
         <div className="relative z-10">
           <div className="container">
-            <TwoFactorForm />
+            <Suspense fallback={<div className="flex items-center justify-center p-8">Loading...</div>}>
+              <TwoFactorForm />
+            </Suspense>
           </div>
         </div>
       </main>

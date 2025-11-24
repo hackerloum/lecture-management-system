@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 
 import { Footer } from "@/components/landing/Footer";
@@ -66,7 +67,9 @@ export default function LoginPage() {
               aria-hidden
             />
             
-            <LoginForm />
+            <Suspense fallback={<div className="flex items-center justify-center p-8">Loading...</div>}>
+              <LoginForm />
+            </Suspense>
           </motion.div>
 
           {/* Trust Indicators */}

@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { Footer } from "@/components/landing/Footer";
 import { Navigation } from "@/components/landing/Navigation";
 import { SessionExpiredNotice } from "@/components/login/SessionExpiredNotice";
@@ -17,7 +18,9 @@ export default function SessionExpiredPage() {
         <div className="absolute -top-16 left-1/3 h-[420px] w-[420px] rounded-full bg-amber-200/35 blur-[140px]" />
         <div className="relative z-10">
           <div className="container">
-            <SessionExpiredNotice />
+            <Suspense fallback={<div className="flex items-center justify-center p-8">Loading...</div>}>
+              <SessionExpiredNotice />
+            </Suspense>
           </div>
         </div>
       </main>
