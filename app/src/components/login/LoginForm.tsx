@@ -25,6 +25,7 @@ import {
 } from "react";
 
 import { cn } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type FormStatus = "idle" | "loading" | "success" | "error";
 type ButtonState = "default" | "loading" | "success" | "error";
@@ -81,36 +82,42 @@ const formReducer = (state: FormState, action: FormAction): FormState => {
   }
 };
 
-const hashPassword = async (raw: string) => {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(raw);
-  const digest = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-};
-
-const simulateLogin = async (payload: FormState): Promise<LoginResponse> => {
-  await new Promise((resolve) => setTimeout(resolve, 1400));
-
+const loginWithSupabase = async (payload: FormState): Promise<LoginResponse> => {
+  const supabase = createSupabaseBrowserClient();
   const email = payload.email.trim().toLowerCase();
-  if (email.includes("locked")) {
-    return { status: "error", reason: "locked" };
-  }
-  if (email.includes("network")) {
+
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password: payload.password,
+    });
+
+    if (error) {
+      // Handle specific error cases
+      if (error.message.includes("Invalid login credentials") || error.message.includes("Email not confirmed")) {
+        return { status: "error", reason: "invalid_credentials" };
+      }
+      if (error.message.includes("Too many requests")) {
+        return { status: "error", reason: "locked" };
+      }
+      if (error.message.includes("Network") || error.message.includes("fetch")) {
+        return { status: "error", reason: "network" };
+      }
+      // Default to server error for other cases
+      return { status: "error", reason: "server" };
+    }
+
+    if (data.user && data.session) {
+      // Check if user has 2FA enabled (you can customize this based on your user metadata)
+      const requiresTwoFactor = data.user.user_metadata?.two_factor_enabled === true;
+      return { status: "success", requiresTwoFactor };
+    }
+
+    return { status: "error", reason: "invalid_credentials" };
+  } catch (error) {
+    console.error("[login] Unexpected error:", error);
     return { status: "error", reason: "network" };
   }
-  if (email.includes("server")) {
-    return { status: "error", reason: "server" };
-  }
-  if (email.includes("invalid") || payload.password.trim().length === 0) {
-    return { status: "error", reason: "invalid_credentials" };
-  }
-  if (email.includes("2fa")) {
-    return { status: "success", requiresTwoFactor: true };
-  }
-
-  return { status: "success", requiresTwoFactor: false };
 };
 
 export const LoginForm = () => {
@@ -271,12 +278,10 @@ export const LoginForm = () => {
     setFormMessage(null);
 
     try {
-      const hashedPassword = await hashPassword(formState.password);
-      const response = await simulateLogin(formState);
-      console.info("[login] Submitting payload", {
+      const response = await loginWithSupabase(formState);
+      console.info("[login] Attempting login", {
         email: formState.email,
         remember: formState.rememberMe,
-        passwordDigest: hashedPassword,
       });
 
       if (response.status === "success") {

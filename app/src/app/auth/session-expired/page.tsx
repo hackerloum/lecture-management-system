@@ -19,7 +19,7 @@ export default function SessionExpiredPage() {
         <div className="relative z-10">
           <div className="container">
             <Suspense fallback={<div className="flex items-center justify-center p-8">Loading...</div>}>
-              <SessionExpiredNotice />
+            <SessionExpiredNotice />
             </Suspense>
           </div>
         </div>

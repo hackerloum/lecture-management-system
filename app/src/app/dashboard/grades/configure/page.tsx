@@ -11,12 +11,15 @@ import {
   FileText,
   Trash2,
   GripVertical,
+  Loader2,
+  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useState, useEffect } from "react";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 interface GradeCategory {
   id: string;
@@ -24,6 +27,7 @@ interface GradeCategory {
   weight: number;
   color: string;
   assignments: Assignment[];
+  dbId?: string; // Database ID for existing categories
 }
 
 interface Assignment {
@@ -31,54 +35,26 @@ interface Assignment {
   name: string;
   maxPoints: number;
   dueDate: string;
+  dbId?: string; // Database ID for existing assignments
 }
 
-const defaultCategories: GradeCategory[] = [
-  {
-    id: "1",
-    name: "Assignments",
-    weight: 40,
-    color: "from-blue-500 to-cyan-500",
-    assignments: [
-      { id: "a1", name: "Assignment 1", maxPoints: 100, dueDate: "2025-01-15" },
-      { id: "a2", name: "Assignment 2", maxPoints: 100, dueDate: "2025-01-29" },
-    ],
-  },
-  {
-    id: "2",
-    name: "Quizzes",
-    weight: 20,
-    color: "from-green-500 to-emerald-500",
-    assignments: [
-      { id: "q1", name: "Quiz 1", maxPoints: 50, dueDate: "2025-01-20" },
-      { id: "q2", name: "Quiz 2", maxPoints: 50, dueDate: "2025-02-10" },
-    ],
-  },
-  {
-    id: "3",
-    name: "Midterm Exam",
-    weight: 20,
-    color: "from-orange-500 to-red-500",
-    assignments: [
-      { id: "m1", name: "Midterm Exam", maxPoints: 200, dueDate: "2025-03-15" },
-    ],
-  },
-  {
-    id: "4",
-    name: "Final Exam",
-    weight: 20,
-    color: "from-purple-500 to-pink-500",
-    assignments: [
-      { id: "f1", name: "Final Exam", maxPoints: 200, dueDate: "2025-05-20" },
-    ],
-  },
-];
+interface Course {
+  id: string;
+  code: string;
+  name: string;
+}
 
 export default function ConfigureGradesPage() {
   const prefersReducedMotion = useReducedMotion();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const courseIdParam = searchParams.get("courseId");
 
-  const [categories, setCategories] = useState<GradeCategory[]>(defaultCategories);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(courseIdParam || "");
+  const [categories, setCategories] = useState<GradeCategory[]>([]);
   const [gradingScale, setGradingScale] = useState("letter");
   const [passingGrade, setPassingGrade] = useState(60);
   
@@ -102,12 +78,151 @@ export default function ConfigureGradesPage() {
     "from-indigo-500 to-purple-500",
   ];
 
+  // Fetch courses and load data
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const supabase = createSupabaseBrowserClient();
+
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw new Error("Not authenticated");
+        }
+
+        // Fetch courses where user is a collaborator
+        const { data: courseCollaborators, error: coursesError } = await supabase
+          .from("course_collaborators")
+          .select(`
+            course_id,
+            courses (
+              id,
+              code,
+              name
+            )
+          `)
+          .eq("profile_id", user.id);
+
+        if (coursesError) {
+          console.error("Courses error:", coursesError);
+        }
+
+        const fetchedCourses: Course[] = (courseCollaborators || [])
+          .map((cc: any) => ({
+            id: cc.courses.id,
+            code: cc.courses.code,
+            name: cc.courses.name,
+          }))
+          .filter((c: Course) => c.id);
+
+        setCourses(fetchedCourses);
+
+        // Auto-select first course if available and none selected
+        if (fetchedCourses.length > 0 && !selectedCourseId) {
+          setSelectedCourseId(fetchedCourses[0].id);
+        }
+
+        // Load data for selected course
+        if (selectedCourseId || (fetchedCourses.length > 0 && fetchedCourses[0].id)) {
+          const courseId = selectedCourseId || fetchedCourses[0].id;
+          await loadCourseData(courseId);
+        }
+      } catch (err) {
+        console.error("Error fetching data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, []);
+
+  // Load course data when course selection changes
+  useEffect(() => {
+    if (selectedCourseId) {
+      loadCourseData(selectedCourseId);
+    }
+  }, [selectedCourseId]);
+
+  async function loadCourseData(courseId: string) {
+    try {
+      setLoading(true);
+      const supabase = createSupabaseBrowserClient();
+
+      // Fetch grade categories
+      const { data: categoriesData, error: categoriesError } = await supabase
+        .from("grade_categories")
+        .select("id, name, weight, color, display_order")
+        .eq("course_id", courseId)
+        .order("display_order", { ascending: true });
+
+      if (categoriesError) {
+        console.error("Categories error:", categoriesError);
+      }
+
+      // Fetch assignments
+      const { data: assignmentsData, error: assignmentsError } = await supabase
+        .from("assignments")
+        .select("id, title, max_points, due_date, category_id")
+        .eq("course_id", courseId)
+        .order("due_date", { ascending: true });
+
+      if (assignmentsError) {
+        console.error("Assignments error:", assignmentsError);
+      }
+
+      // Map color names to gradient classes
+      const colorNameMap: Record<string, string> = {
+        blue: "from-blue-500 to-cyan-500",
+        green: "from-green-500 to-emerald-500",
+        orange: "from-orange-500 to-red-500",
+        purple: "from-purple-500 to-pink-500",
+        yellow: "from-yellow-500 to-orange-500",
+        indigo: "from-indigo-500 to-purple-500",
+      };
+
+      // Build categories with assignments
+      const loadedCategories: GradeCategory[] = (categoriesData || []).map((cat: any) => {
+        const categoryAssignments = (assignmentsData || [])
+          .filter((a: any) => a.category_id === cat.id)
+          .map((a: any) => ({
+            id: `a-${a.id}`,
+            name: a.title,
+            maxPoints: Number(a.max_points) || 100,
+            dueDate: a.due_date ? new Date(a.due_date).toISOString().split("T")[0] : new Date().toISOString().split("T")[0],
+            dbId: a.id,
+          }));
+
+        return {
+          id: `c-${cat.id}`,
+          name: cat.name,
+          weight: Number(cat.weight) || 0,
+          color: colorNameMap[cat.color] || colorOptions[0],
+          assignments: categoryAssignments,
+          dbId: cat.id,
+        };
+      });
+
+      // If no categories exist, create default structure
+      if (loadedCategories.length === 0) {
+        setCategories([]);
+      } else {
+        setCategories(loadedCategories);
+      }
+    } catch (err) {
+      console.error("Error loading course data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const totalWeight = categories.reduce((sum, cat) => sum + cat.weight, 0);
 
   const addCategory = () => {
     if (newCategoryName.trim()) {
       const newCategory: GradeCategory = {
-        id: Date.now().toString(),
+        id: `temp-${Date.now()}`,
         name: newCategoryName.trim(),
         weight: newCategoryWeight,
         color: colorOptions[categories.length % colorOptions.length],
@@ -132,7 +247,7 @@ export default function ConfigureGradesPage() {
 
   const addAssignment = (categoryId: string) => {
     const newAssignment: Assignment = {
-      id: Date.now().toString(),
+      id: `temp-${Date.now()}`,
       name: "New Assignment",
       maxPoints: 100,
       dueDate: new Date().toISOString().split("T")[0],
@@ -178,13 +293,129 @@ export default function ConfigureGradesPage() {
     );
   };
 
-  const handleSave = () => {
-    console.log("Saving grading configuration:", {
-      categories,
-      gradingScale,
-      passingGrade,
-    });
-    router.push("/dashboard/grades");
+  const handleSave = async () => {
+    if (!selectedCourseId) {
+      alert("Please select a course");
+      return;
+    }
+
+    if (totalWeight !== 100) {
+      alert("Total weight must equal 100%");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const supabase = createSupabaseBrowserClient();
+
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error("Not authenticated");
+      }
+
+      // Save categories and assignments
+      for (let i = 0; i < categories.length; i++) {
+        const category = categories[i];
+        let categoryDbId = category.dbId;
+
+        // Extract color name from gradient class
+        const colorName = category.color.includes("blue") ? "blue" :
+          category.color.includes("green") ? "green" :
+          category.color.includes("orange") ? "orange" :
+          category.color.includes("purple") ? "purple" :
+          category.color.includes("yellow") ? "yellow" :
+          category.color.includes("indigo") ? "indigo" : "blue";
+
+        // Create or update category
+        if (categoryDbId) {
+          // Update existing category
+          const { error: updateError } = await supabase
+            .from("grade_categories")
+            .update({
+              name: category.name,
+              weight: category.weight,
+              color: colorName,
+              display_order: i,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", categoryDbId);
+
+          if (updateError) {
+            console.error("Error updating category:", updateError);
+          }
+        } else {
+          // Create new category
+          const { data: newCategory, error: createError } = await supabase
+            .from("grade_categories")
+            .insert({
+              course_id: selectedCourseId,
+              name: category.name,
+              weight: category.weight,
+              color: colorName,
+              display_order: i,
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error("Error creating category:", createError);
+            continue;
+          }
+
+          categoryDbId = newCategory.id;
+        }
+
+        // Save assignments for this category
+        for (const assignment of category.assignments) {
+          if (assignment.dbId) {
+            // Update existing assignment
+            const { error: updateError } = await supabase
+              .from("assignments")
+              .update({
+                title: assignment.name,
+                max_points: assignment.maxPoints,
+                due_date: assignment.dueDate ? new Date(assignment.dueDate).toISOString() : null,
+                category_id: categoryDbId,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", assignment.dbId);
+
+            if (updateError) {
+              console.error("Error updating assignment:", updateError);
+            }
+          } else {
+            // Create new assignment
+            const { error: createError } = await supabase
+              .from("assignments")
+              .insert({
+                course_id: selectedCourseId,
+                category_id: categoryDbId,
+                title: assignment.name,
+                max_points: assignment.maxPoints,
+                due_date: assignment.dueDate ? new Date(assignment.dueDate).toISOString() : null,
+                type: "assignment",
+                status: "published",
+                created_by: user.id,
+              });
+
+            if (createError) {
+              console.error("Error creating assignment:", createError);
+            }
+          }
+        }
+      }
+
+      // Delete categories that were removed (if any)
+      // Note: This is simplified - in production, you'd want to track deleted items
+      
+      router.push(`/dashboard/grades?courseId=${selectedCourseId}`);
+    } catch (err) {
+      console.error("Error saving configuration:", err);
+      alert("Failed to save configuration. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -205,6 +436,29 @@ export default function ConfigureGradesPage() {
 
       <main className="relative z-10 px-4 py-24 sm:px-6 lg:py-32">
         <div className="mx-auto max-w-6xl">
+          {loading && !selectedCourseId ? (
+            <div className="flex min-h-[400px] items-center justify-center">
+              <div className="text-center">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-purple-600" />
+                <div className="mt-4 text-sm text-neutral-600 dark:text-neutral-400">
+                  Loading configuration...
+                </div>
+              </div>
+            </div>
+          ) : courses.length === 0 ? (
+            <div className="flex min-h-[400px] items-center justify-center">
+              <div className="text-center">
+                <BookOpen className="mx-auto h-12 w-12 text-neutral-400" />
+                <div className="mt-4 text-lg font-semibold text-neutral-900 dark:text-white">
+                  No courses found
+                </div>
+                <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                  You need to be assigned to a course to configure grades
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
           {/* Back Button */}
           <motion.div
             initial={prefersReducedMotion ? undefined : { opacity: 0, x: -20 }}
@@ -213,13 +467,39 @@ export default function ConfigureGradesPage() {
             className="mb-6"
           >
             <Link
-              href="/dashboard/grades"
+              href={`/dashboard/grades${selectedCourseId ? `?courseId=${selectedCourseId}` : ""}`}
               className="inline-flex items-center gap-2 text-sm font-semibold text-neutral-700 transition hover:text-purple-600 dark:text-neutral-300 dark:hover:text-purple-400"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to Grade Book
             </Link>
           </motion.div>
+
+          {/* Course Selection */}
+          {courses.length > 0 && (
+            <motion.div
+              initial={prefersReducedMotion ? undefined : { opacity: 0, y: -20 }}
+              animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="mb-6"
+            >
+              <label htmlFor="course-select" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                Select Course
+              </label>
+              <select
+                id="course-select"
+                value={selectedCourseId}
+                onChange={(e) => setSelectedCourseId(e.target.value)}
+                className="h-12 w-full max-w-md rounded-xl border border-white/20 bg-white/10 px-4 text-sm text-neutral-900 backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5 dark:text-white [&>option]:bg-white [&>option]:text-neutral-900 dark:[&>option]:bg-neutral-800 dark:[&>option]:text-white"
+              >
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.code} - {course.name}
+                  </option>
+                ))}
+              </select>
+            </motion.div>
+          )}
 
           {/* Header */}
           <motion.div
@@ -564,11 +844,20 @@ export default function ConfigureGradesPage() {
               >
                 <button
                   onClick={handleSave}
-                  disabled={totalWeight !== 100}
+                  disabled={totalWeight !== 100 || !selectedCourseId || saving || loading}
                   className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
                 >
-                  <Save className="h-5 w-5" />
-                  Save Configuration
+                  {saving ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-5 w-5" />
+                      Save Configuration
+                    </>
+                  )}
                 </button>
               </motion.div>
 
@@ -592,6 +881,8 @@ export default function ConfigureGradesPage() {
               </motion.div>
             </div>
           </div>
+            </>
+          )}
         </div>
       </main>
     </div>

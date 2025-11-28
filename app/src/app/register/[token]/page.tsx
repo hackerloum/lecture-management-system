@@ -12,40 +12,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { use, useState, useEffect } from "react";
-
-// Mock function to validate token and get lecturer info
-const validateToken = async (token: string) => {
-  // Simulate API call
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  
-  if (token.startsWith("inv_")) {
-    return {
-      valid: true,
-      lecturer: {
-        name: "Dr. Sarah Johnson",
-        department: "Computer Science",
-        email: "sarah.johnson@university.edu",
-      },
-    };
-  }
-  return { valid: false, lecturer: null };
-};
-
-// Mock function to check if email already submitted
-const checkDuplicateEmail = async (email: string, token: string) => {
-  // Simulate API call
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  
-  // For demo: emails ending with "duplicate" will be flagged
-  return email.toLowerCase().includes("duplicate");
-};
-
-// Mock function to submit registration
-const submitRegistration = async (data: any) => {
-  // Simulate API call
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  return { success: true };
-};
+import { useRouter } from "next/navigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export default function StudentRegistrationPage({
   params,
@@ -54,16 +22,20 @@ export default function StudentRegistrationPage({
 }) {
   const { token } = use(params);
   const prefersReducedMotion = useReducedMotion();
+  const router = useRouter();
 
   // Validation state
   const [validating, setValidating] = useState(true);
   const [tokenValid, setTokenValid] = useState(false);
-  const [lecturerInfo, setLecturerInfo] = useState<any>(null);
+  const [invitation, setInvitation] = useState<any>(null);
+  const [inviterInfo, setInviterInfo] = useState<any>(null);
 
   // Form state
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [phone, setPhone] = useState("");
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [major, setMajor] = useState("Computer Science");
@@ -77,22 +49,82 @@ export default function StudentRegistrationPage({
   const [duplicate, setDuplicate] = useState(false);
 
   useEffect(() => {
-    const validate = async () => {
-      const result = await validateToken(token);
-      setTokenValid(result.valid);
-      setLecturerInfo(result.lecturer);
-      setValidating(false);
-    };
-    validate();
+    async function validateToken() {
+      try {
+        const supabase = createSupabaseBrowserClient();
+
+        // Validate invitation token
+        const { data: invitationData, error: inviteError } = await supabase
+          .from("invitations")
+          .select("*")
+          .eq("token", token)
+          .eq("role", "student")
+          .single();
+
+        if (inviteError || !invitationData) {
+          setTokenValid(false);
+          setValidating(false);
+          return;
+        }
+
+        // Check if invitation is expired
+        const expiresAt = new Date(invitationData.expires_at);
+        if (expiresAt < new Date()) {
+          setTokenValid(false);
+          setValidating(false);
+          return;
+        }
+
+        // Check if invitation is cancelled
+        if (invitationData.status === "cancelled") {
+          setTokenValid(false);
+          setValidating(false);
+          return;
+        }
+
+        setInvitation(invitationData);
+        setTokenValid(true);
+
+        // Get inviter info
+        if (invitationData.invited_by) {
+          const { data: inviterProfile } = await supabase
+            .from("profiles")
+            .select("full_name, department")
+            .eq("id", invitationData.invited_by)
+            .single();
+
+          if (inviterProfile) {
+            setInviterInfo(inviterProfile);
+          }
+        }
+
+        setValidating(false);
+      } catch (err) {
+        console.error("Error validating token:", err);
+        setTokenValid(false);
+        setValidating(false);
+      }
+    }
+
+    void validateToken();
   }, [token]);
 
   const handleEmailBlur = async () => {
     if (email && email.includes("@")) {
-      const isDuplicate = await checkDuplicateEmail(email, token);
-      setDuplicate(isDuplicate);
-      if (isDuplicate) {
-        setError("This email has already been used to register via this link.");
+      const supabase = createSupabaseBrowserClient();
+      
+      // Check if email already exists in profiles
+      const { data: existingProfile } = await supabase
+        .from("profiles")
+        .select("id")
+        .eq("email", email.toLowerCase())
+        .single();
+
+      if (existingProfile) {
+        setDuplicate(true);
+        setError("This email is already registered. Please sign in instead.");
       } else {
+        setDuplicate(false);
         setError(null);
       }
     }
@@ -102,7 +134,17 @@ export default function StudentRegistrationPage({
     e.preventDefault();
     
     if (duplicate) {
-      setError("Cannot submit - this email has already been used.");
+      setError("This email is already registered. Please sign in instead.");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters long.");
       return;
     }
 
@@ -110,20 +152,78 @@ export default function StudentRegistrationPage({
     setError(null);
 
     try {
-      await submitRegistration({
-        firstName,
-        lastName,
-        email,
-        phone,
-        dateOfBirth,
-        major,
-        year,
-        studentId,
-        inviteToken: token,
+      const supabase = createSupabaseBrowserClient();
+      const fullName = `${firstName} ${lastName}`.trim();
+      const emailLower = email.toLowerCase().trim();
+
+      // Sign up the student with Supabase Auth
+      const { data: authData, error: signUpError } = await supabase.auth.signUp({
+        email: emailLower,
+        password,
+        options: {
+          data: {
+            full_name: fullName,
+            role: "student",
+          },
+          emailRedirectTo: `${typeof window !== "undefined" ? window.location.origin : ""}/auth/login`,
+        },
       });
+
+      if (signUpError) {
+        if (signUpError.message.includes("already registered") || signUpError.message.includes("already exists")) {
+          setError("This email is already registered. Please sign in instead.");
+        } else {
+          setError(signUpError.message || "Failed to create account. Please try again.");
+        }
+        setSubmitting(false);
+        return;
+      }
+
+      if (!authData.user) {
+        setError("Failed to create account. Please try again.");
+        setSubmitting(false);
+        return;
+      }
+
+      // Wait a moment for the profile trigger to create the profile
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      // Update the profile with additional student information
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update({
+          phone: phone || null,
+          major: major || null,
+          year: year || null,
+          student_id: studentId || null,
+          organization_id: invitation.organization_id,
+        })
+        .eq("id", authData.user.id);
+
+      if (profileError) {
+        console.error("Error updating profile:", profileError);
+        // Continue anyway - the profile was created by trigger
+      }
+
+      // Update invitation to mark it as accepted
+      await supabase
+        .from("invitations")
+        .update({
+          email: emailLower,
+          status: "accepted",
+          accepted_at: new Date().toISOString(),
+        })
+        .eq("id", invitation.id);
+
       setSubmitted(true);
+      
+      // Redirect to login after 3 seconds
+      setTimeout(() => {
+        router.push(`/auth/login?email=${encodeURIComponent(emailLower)}`);
+      }, 3000);
     } catch (err) {
-      setError("Failed to submit registration. Please try again.");
+      console.error("Registration error:", err);
+      setError("Failed to complete registration. Please try again.");
       setSubmitting(false);
     }
   };
@@ -171,14 +271,13 @@ export default function StudentRegistrationPage({
         >
           <CheckCircle className="mx-auto mb-4 h-16 w-16 text-green-500" />
           <h1 className="mb-2 text-2xl font-bold text-neutral-900 dark:text-white">
-            Registration Submitted!
+            Registration Successful! ✅
           </h1>
           <p className="mb-4 text-neutral-600 dark:text-neutral-400">
-            Your registration has been sent to <strong>{lecturerInfo.name}</strong> for approval.
-            You'll be notified once it's reviewed.
+            Your student account has been created successfully. You'll be redirected to the login page shortly.
           </p>
           <div className="rounded-xl bg-blue-500/10 p-4 text-sm text-blue-600 dark:text-blue-400">
-            Please check your email for confirmation and next steps.
+            Please check your email to verify your account. You can then sign in with your email and password.
           </div>
         </motion.div>
       </div>
@@ -213,11 +312,14 @@ export default function StudentRegistrationPage({
               Student Registration
             </div>
             <h1 className="mb-2 text-4xl font-bold text-neutral-900 dark:text-white">
-              Register for {lecturerInfo.name}'s Class 🎓
+              Student Registration 🎓
             </h1>
-            <p className="text-lg text-neutral-600 dark:text-neutral-400">
-              {lecturerInfo.department} Department
-            </p>
+            {inviterInfo && (
+              <p className="text-lg text-neutral-600 dark:text-neutral-400">
+                Invited by {inviterInfo.full_name}
+                {inviterInfo.department && ` • ${inviterInfo.department}`}
+              </p>
+            )}
           </motion.div>
 
           {/* Info Banner */}
@@ -229,8 +331,7 @@ export default function StudentRegistrationPage({
           >
             <div className="mb-1 font-semibold">Welcome!</div>
             <p>
-              Please fill out the form below to register. Your information will be sent to{" "}
-              <strong>{lecturerInfo.name}</strong> for approval.
+              Please fill out the form below to create your student account. You'll be able to access the system once your registration is complete.
             </p>
           </motion.div>
 
@@ -276,7 +377,7 @@ export default function StudentRegistrationPage({
                   />
                 </div>
 
-                <div>
+                <div className="md:col-span-2">
                   <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                     Email Address *
                   </label>
@@ -295,9 +396,40 @@ export default function StudentRegistrationPage({
                   {duplicate && (
                     <p className="mt-2 flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400">
                       <AlertCircle className="h-4 w-4" />
-                      This email has already been used to register.
+                      This email is already registered. Please sign in instead.
                     </p>
                   )}
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                    Password *
+                  </label>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-sm backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5"
+                  />
+                  <p className="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+                    Must be at least 8 characters
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                    Confirm Password *
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    minLength={8}
+                    className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-sm backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5"
+                  />
                 </div>
 
                 <div>

@@ -23,6 +23,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useMemo, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type FormStatus = "idle" | "loading" | "success" | "error";
 
@@ -30,13 +31,6 @@ type EmailPreferences = {
   updates: boolean;
   content: boolean;
   promotions: boolean;
-};
-
-type InstitutionOption = {
-  id: string;
-  name: string;
-  domain: string;
-  size: string;
 };
 
 type FieldName =
@@ -49,19 +43,6 @@ type FieldName =
   | "heardFrom"
   | "terms";
 
-const institutionDirectory: InstitutionOption[] = [
-  { id: "harvard", name: "Harvard University", domain: "harvard.edu", size: "10,000+" },
-  { id: "mit", name: "Massachusetts Institute of Technology", domain: "mit.edu", size: "10,000+" },
-  { id: "stanford", name: "Stanford University", domain: "stanford.edu", size: "10,000+" },
-  { id: "cambridge", name: "University of Cambridge", domain: "cam.ac.uk", size: "10,000+" },
-  { id: "oxford", name: "University of Oxford", domain: "ox.ac.uk", size: "10,000+" },
-  { id: "ucla", name: "University of California, Los Angeles", domain: "ucla.edu", size: "10,000+" },
-  { id: "nanyang", name: "Nanyang Technological University", domain: "ntu.edu.sg", size: "10,000+" },
-  { id: "melbourne", name: "University of Melbourne", domain: "unimelb.edu.au", size: "10,000+" },
-  { id: "capeTown", name: "University of Cape Town", domain: "uct.ac.za", size: "10,000+" },
-  { id: "iitd", name: "Indian Institute of Technology Delhi", domain: "iitd.ac.in", size: "10,000+" },
-];
-
 const roles = [
   "Lecturer / Professor",
   "Department Head",
@@ -70,6 +51,16 @@ const roles = [
   "Registrar",
   "Other (please specify)",
 ];
+
+// Map form role to database role
+const mapRoleToDatabaseRole = (formRole: string): "lecturer" | "admin" | "student" | "ta" => {
+  const roleLower = formRole.toLowerCase();
+  if (roleLower.includes("administrator") || roleLower.includes("registrar")) {
+    return "admin";
+  }
+  // Default to lecturer for all other roles
+  return "lecturer";
+};
 
 const institutionSizes = [
   "Under 1,000 students",
@@ -259,20 +250,11 @@ export const SignupForm = () => {
   const [formStatus, setFormStatus] = useState<FormStatus>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [isEmailChecking, setIsEmailChecking] = useState(false);
-  const [institutionQuery, setInstitutionQuery] = useState("");
-  const [isInstitutionDropdownOpen, setIsInstitutionDropdownOpen] = useState(false);
 
   const passwordStrength = useMemo(
     () => getPasswordStrength(values.password),
     [values.password]
   );
-
-  const filteredInstitutions = useMemo(() => {
-    if (!institutionQuery) return institutionDirectory;
-    return institutionDirectory.filter((institution) =>
-      institution.name.toLowerCase().includes(institutionQuery.trim().toLowerCase())
-    );
-  }, [institutionQuery]);
 
   const validateField = useCallback(
     (name: FieldName, value: string | boolean) => {
@@ -291,9 +273,6 @@ export const SignupForm = () => {
           }
           if (!emailRegex.test(value.trim())) {
             return "Please enter a valid email address";
-          }
-          if (value.trim().toLowerCase() === "already@registered.edu") {
-            return "This email is already registered";
           }
           return null;
         case "password":
@@ -339,9 +318,6 @@ export const SignupForm = () => {
         setErrors((prev) => ({ ...prev, email: validateField("email", values.email) }));
       }, 350);
       return;
-    }
-    if (name === "institution") {
-      setTimeout(() => setIsInstitutionDropdownOpen(false), 120);
     }
     setErrors((prev) => ({
       ...prev,
@@ -395,13 +371,87 @@ export const SignupForm = () => {
     setFormStatus("loading");
 
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1500));
-      setFormStatus("success");
-      setTimeout(() => {
-        router.push(`/auth/login?email=${encodeURIComponent(values.email)}`);
-      }, 2000);
+      const supabase = createSupabaseBrowserClient();
+      const email = values.email.trim().toLowerCase();
+      const databaseRole = mapRoleToDatabaseRole(values.role);
+
+      // Sign up the user with Supabase
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password: values.password,
+        options: {
+          data: {
+            full_name: values.fullName,
+            institution: values.institution,
+            role: databaseRole, // Store mapped database role
+            form_role: values.role, // Keep original form role for reference
+            institution_size: values.institutionSize,
+            heard_from: values.heardFrom,
+            email_preferences: emailPreferences,
+          },
+          emailRedirectTo: `${window.location.origin}/auth/login`,
+        },
+      });
+
+      if (error) {
+        // Handle specific error cases
+        if (error.message.includes("User already registered") || error.message.includes("already exists")) {
+          setFormError("This email is already registered. Please sign in instead.");
+        } else if (error.message.includes("Password")) {
+          setFormError("Password does not meet requirements. Please choose a stronger password.");
+        } else if (error.message.includes("Email")) {
+          setFormError("Please enter a valid email address.");
+        } else if (error.message.includes("Network") || error.message.includes("fetch")) {
+          setFormError("Connection lost. Please check your internet and try again.");
+        } else {
+          setFormError(error.message || "Something went wrong. Please try again later.");
+        }
+        setFormStatus("error");
+        return;
+      }
+
+      if (data.user) {
+        // Manually create profile as backup (trigger should handle this, but this ensures it works)
+        try {
+          const { error: profileError } = await supabase
+            .from("profiles")
+            .insert({
+              id: data.user.id,
+              email: email,
+              full_name: values.fullName,
+              role: databaseRole,
+            })
+            .select()
+            .single();
+
+          if (profileError) {
+            // If profile already exists (from trigger), that's okay
+            if (!profileError.message.includes("duplicate") && !profileError.message.includes("already exists")) {
+              console.warn("[signup] Profile creation warning:", profileError);
+            }
+          }
+        } catch (profileErr) {
+          // Profile might already exist from trigger, which is fine
+          console.warn("[signup] Profile creation:", profileErr);
+        }
+
+        setFormStatus("success");
+        // Show success message about email confirmation
+        if (data.user.email_confirmed_at === null) {
+          setFormError(null);
+          // Note: Supabase may require email confirmation
+          // The user will receive an email to confirm their account
+        }
+        // Redirect to login page after a short delay
+        setTimeout(() => {
+          router.push(`/auth/login?email=${encodeURIComponent(values.email)}`);
+        }, 2000);
+      } else {
+        setFormError("Something went wrong. Please try again later.");
+        setFormStatus("error");
+      }
     } catch (error) {
-      console.error(error);
+      console.error("[signup] Unexpected error:", error);
       setFormStatus("error");
       setFormError("Something went wrong. Please try again later.");
     }
@@ -441,17 +491,6 @@ export const SignupForm = () => {
     return null;
   };
 
-  const handleInstitutionSelect = (institution: InstitutionOption) => {
-    handleChange("institution", institution.name);
-    setInstitutionQuery(institution.name);
-    setIsInstitutionDropdownOpen(false);
-  };
-
-  const handleInstitutionInput = (value: string) => {
-    setInstitutionQuery(value);
-    handleChange("institution", value);
-    setIsInstitutionDropdownOpen(true);
-  };
 
   const getFieldStateClasses = (name: FieldName) => {
     if (errors[name]) return errorFieldClasses;
@@ -653,62 +692,24 @@ export const SignupForm = () => {
                     Institution Name
                     <span aria-hidden className="text-error">*</span>
                   </label>
-                  <div className="relative">
-                    <div className={getFieldWrapperClasses(institutionFieldState)}>
-                      <Building2 className="h-4.5 w-4.5 shrink-0 text-neutral-400 dark:text-neutral-500" />
-                      <input
-                        id="institution"
-                        name="institution"
-                        autoComplete="organization"
-                        value={institutionQuery}
-                        onChange={(event) => handleInstitutionInput(event.target.value)}
-                        onFocus={() => setIsInstitutionDropdownOpen(true)}
-                        onBlur={() => handleBlur("institution")}
-                        aria-invalid={Boolean(errors.institution)}
-                        aria-describedby={errors.institution ? "institution-error" : isFieldValid("institution") ? "institution-success" : undefined}
-                        placeholder="Search for your institution..."
-                        className={cn(baseFieldClasses, focusRingClasses, getFieldStateClasses("institution"))}
-                        required
-                      />
-                      {isFieldValid("institution") ? <Check className="h-4 w-4 text-success" /> : null}
-                      {errors.institution ? (
-                        <AlertCircle className="h-4 w-4 text-error" />
-                      ) : (
-                        <ChevronDown
-                          className={cn(
-                            "h-4 w-4 text-neutral-400 transition-transform dark:text-neutral-500",
-                            isInstitutionDropdownOpen && "rotate-180"
-                          )}
-                        />
-                      )}
-                    </div>
-                    {isInstitutionDropdownOpen ? (
-                      <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 max-h-60 overflow-y-auto rounded-2xl border border-neutral-200 bg-white/98 shadow-xl dark:border-neutral-700 dark:bg-[#0f172a]">
-                        <ul className="py-2">
-                          {filteredInstitutions.length === 0 ? (
-                            <li className="px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">
-                              No matches found. Keep typing to refine your search.
-                            </li>
-                          ) : (
-                            filteredInstitutions.map((institution) => (
-                              <li key={institution.id}>
-                                <button
-                                  type="button"
-                                  className="flex w-full flex-col items-start gap-1 px-4 py-3 text-left text-sm text-neutral-700 transition hover:bg-neutral-50 focus:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-neutral-800"
-                                  onMouseDown={(event) => event.preventDefault()}
-                                  onClick={() => handleInstitutionSelect(institution)}
-                                >
-                                  <span className="font-medium">{institution.name}</span>
-                                  <span className="text-xs text-neutral-500">
-                                    {institution.domain} · {institution.size} students
-                                  </span>
-                                </button>
-                              </li>
-                            ))
-                          )}
-                        </ul>
-                      </div>
-                    ) : null}
+                  <div className={getFieldWrapperClasses(institutionFieldState)}>
+                    <Building2 className="h-4.5 w-4.5 shrink-0 text-neutral-400 dark:text-neutral-500" />
+                    <input
+                      id="institution"
+                      name="institution"
+                      type="text"
+                      autoComplete="organization"
+                      value={values.institution}
+                      onChange={(event) => handleChange("institution", event.target.value)}
+                      onBlur={() => handleBlur("institution")}
+                      aria-invalid={Boolean(errors.institution)}
+                      aria-describedby={errors.institution ? "institution-error" : isFieldValid("institution") ? "institution-success" : undefined}
+                      placeholder="Enter your institution name"
+                      className={cn(baseFieldClasses, focusRingClasses, getFieldStateClasses("institution"))}
+                      required
+                    />
+                    {isFieldValid("institution") ? <Check className="h-4 w-4 text-success" /> : null}
+                    {errors.institution ? <AlertCircle className="h-4 w-4 text-error" /> : null}
                   </div>
                   {renderValidationMessage("institution")}
                 </div>

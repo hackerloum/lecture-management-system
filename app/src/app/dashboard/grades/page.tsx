@@ -14,90 +14,273 @@ import {
   Star,
   Sparkles,
   Settings,
+  Loader2,
+  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 import { ExportModal } from "@/components/grades/ExportModal";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-// Mock data
-const students = [
-  {
-    id: 1,
-    name: "Emily Chen",
-    email: "emily.chen@university.edu",
-    avatar: "EC",
-    assignments: [98, 95, 92, 97, 96],
-    avgGrade: 95.6,
-    trend: "up",
-    status: "excellent",
-  },
-  {
-    id: 2,
-    name: "David Lee",
-    email: "david.lee@university.edu",
-    avatar: "DL",
-    assignments: [88, 92, 90, 91, 89],
-    avgGrade: 90.0,
-    trend: "up",
-    status: "good",
-  },
-  {
-    id: 3,
-    name: "Sarah Johnson",
-    email: "sarah.j@university.edu",
-    avatar: "SJ",
-    assignments: [85, 87, 89, 91, 88],
-    avgGrade: 88.0,
-    trend: "up",
-    status: "good",
-  },
-  {
-    id: 4,
-    name: "Mike Brown",
-    email: "mike.brown@university.edu",
-    avatar: "MB",
-    assignments: [78, 75, 72, 70, 68],
-    avgGrade: 72.6,
-    trend: "down",
-    status: "warning",
-  },
-  {
-    id: 5,
-    name: "Lisa Park",
-    email: "lisa.park@university.edu",
-    avatar: "LP",
-    assignments: [92, 94, 93, 95, 96],
-    avgGrade: 94.0,
-    trend: "up",
-    status: "excellent",
-  },
-  {
-    id: 6,
-    name: "John Smith",
-    email: "john.smith@university.edu",
-    avatar: "JS",
-    assignments: [55, 52, 48, 50, 45],
-    avgGrade: 50.0,
-    trend: "down",
-    status: "critical",
-  },
-];
+interface Course {
+  id: string;
+  code: string;
+  name: string;
+}
 
-const assignments = [
-  { id: 1, name: "Assignment 1", dueDate: "Jan 15", maxScore: 100 },
-  { id: 2, name: "Assignment 2", dueDate: "Jan 29", maxScore: 100 },
-  { id: 3, name: "Assignment 3", dueDate: "Feb 12", maxScore: 100 },
-  { id: 4, name: "Assignment 4", dueDate: "Feb 26", maxScore: 100 },
-  { id: 5, name: "Assignment 5", dueDate: "Mar 12", maxScore: 100 },
-];
+interface Assignment {
+  id: string;
+  title: string;
+  due_date: string | null;
+  max_points: number;
+}
+
+interface Student {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string;
+  assignments: (number | null)[];
+  avgGrade: number;
+  trend: "up" | "down";
+  status: "excellent" | "good" | "warning" | "critical";
+}
 
 export default function GradesPage() {
   const prefersReducedMotion = useReducedMotion();
+  const searchParams = useSearchParams();
+  const courseIdParam = searchParams.get("courseId");
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourseId, setSelectedCourseId] = useState<string>(courseIdParam || "");
+  const [students, setStudents] = useState<Student[]>([]);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [stats, setStats] = useState({
+    classAverage: 0,
+    highestGrade: 0,
+    lowestGrade: 0,
+    totalStudents: 0,
+  });
+
+  // Fetch courses and data
+  useEffect(() => {
+    async function fetchData() {
+      try {
+        setLoading(true);
+        const supabase = createSupabaseBrowserClient();
+
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw new Error("Not authenticated");
+        }
+
+        // Fetch courses where user is a collaborator
+        const { data: courseCollaborators, error: coursesError } = await supabase
+          .from("course_collaborators")
+          .select(`
+            course_id,
+            courses (
+              id,
+              code,
+              name
+            )
+          `)
+          .eq("profile_id", user.id);
+
+        if (coursesError) {
+          console.error("Courses error:", coursesError);
+        }
+
+        const fetchedCourses: Course[] = (courseCollaborators || [])
+          .map((cc: any) => ({
+            id: cc.courses.id,
+            code: cc.courses.code,
+            name: cc.courses.name,
+          }))
+          .filter((c: Course) => c.id);
+
+        setCourses(fetchedCourses);
+
+        // Auto-select first course if available
+        if (fetchedCourses.length > 0 && !selectedCourseId) {
+          setSelectedCourseId(fetchedCourses[0].id);
+        }
+
+        // Fetch data for selected course
+        if (selectedCourseId || (fetchedCourses.length > 0 && fetchedCourses[0].id)) {
+          const courseId = selectedCourseId || fetchedCourses[0].id;
+          await fetchCourseData(courseId);
+        }
+      } catch (err) {
+        console.error("Error fetching data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, []);
+
+  // Fetch course data when course selection changes
+  useEffect(() => {
+    if (selectedCourseId) {
+      fetchCourseData(selectedCourseId);
+    }
+  }, [selectedCourseId]);
+
+  async function fetchCourseData(courseId: string) {
+    try {
+      setLoading(true);
+      const supabase = createSupabaseBrowserClient();
+
+      // Fetch enrolled students
+      const { data: enrollments, error: enrollmentsError } = await supabase
+        .from("course_enrollments")
+        .select(`
+          student_id,
+          profiles (
+            id,
+            full_name,
+            email
+          )
+        `)
+        .eq("course_id", courseId)
+        .eq("status", "active");
+
+      if (enrollmentsError) {
+        console.error("Enrollments error:", enrollmentsError);
+      }
+
+      // Fetch assignments
+      const { data: assignmentsData, error: assignmentsError } = await supabase
+        .from("assignments")
+        .select("id, title, due_date, max_points")
+        .eq("course_id", courseId)
+        .eq("status", "published")
+        .order("due_date", { ascending: true });
+
+      if (assignmentsError) {
+        console.error("Assignments error:", assignmentsError);
+      }
+
+      const fetchedAssignments: Assignment[] = (assignmentsData || []).map((a: any) => ({
+        id: a.id,
+        title: a.title,
+        due_date: a.due_date,
+        max_points: Number(a.max_points) || 100,
+      }));
+
+      setAssignments(fetchedAssignments);
+
+      // Fetch grades for all students and assignments
+      const studentIds = (enrollments || []).map((e: any) => e.student_id).filter(Boolean);
+      const assignmentIds = fetchedAssignments.map((a) => a.id);
+
+      let gradesData: any[] = [];
+      if (studentIds.length > 0 && assignmentIds.length > 0) {
+        const { data: grades, error: gradesError } = await supabase
+          .from("grades")
+          .select("assignment_id, student_id, percentage, points_earned, points_possible")
+          .eq("course_id", courseId)
+          .in("student_id", studentIds)
+          .in("assignment_id", assignmentIds);
+
+        if (gradesError) {
+          console.error("Grades error:", gradesError);
+        } else {
+          gradesData = grades || [];
+        }
+      }
+
+      // Build student data with grades
+      const studentsData: Student[] = (enrollments || []).map((enrollment: any) => {
+        const profile = enrollment.profiles;
+        if (!profile) return null;
+
+        const studentId = profile.id;
+        const nameParts = profile.full_name?.split(" ") || [];
+        const avatar = nameParts.length >= 2
+          ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
+          : nameParts[0]?.[0]?.toUpperCase() || "U";
+
+        // Get grades for this student
+        const studentGrades = gradesData.filter((g) => g.student_id === studentId);
+        const assignmentGrades: (number | null)[] = fetchedAssignments.map((assignment) => {
+          const grade = studentGrades.find((g) => g.assignment_id === assignment.id);
+          if (grade && grade.percentage != null) {
+            return Number(grade.percentage);
+          }
+          return null;
+        });
+
+        // Calculate average
+        const validGrades = assignmentGrades.filter((g) => g !== null) as number[];
+        const avgGrade = validGrades.length > 0
+          ? validGrades.reduce((sum, g) => sum + g, 0) / validGrades.length
+          : 0;
+
+        // Determine trend (simplified - compare first half vs second half)
+        const firstHalf = validGrades.slice(0, Math.ceil(validGrades.length / 2));
+        const secondHalf = validGrades.slice(Math.ceil(validGrades.length / 2));
+        const firstAvg = firstHalf.length > 0 ? firstHalf.reduce((s, g) => s + g, 0) / firstHalf.length : 0;
+        const secondAvg = secondHalf.length > 0 ? secondHalf.reduce((s, g) => s + g, 0) / secondHalf.length : 0;
+        const trend: "up" | "down" = secondAvg >= firstAvg ? "up" : "down";
+
+        // Determine status
+        let status: "excellent" | "good" | "warning" | "critical";
+        if (avgGrade >= 90) {
+          status = "excellent";
+        } else if (avgGrade >= 80) {
+          status = "good";
+        } else if (avgGrade >= 60) {
+          status = "warning";
+        } else {
+          status = "critical";
+        }
+
+        return {
+          id: studentId,
+          name: profile.full_name || "Unknown",
+          email: profile.email || "",
+          avatar,
+          assignments: assignmentGrades,
+          avgGrade,
+          trend,
+          status,
+        };
+      }).filter((s): s is Student => s !== null);
+
+      setStudents(studentsData);
+
+      // Calculate statistics
+      const allGrades = studentsData.flatMap((s) => s.assignments.filter((g) => g !== null) as number[]);
+      const classAverage = allGrades.length > 0
+        ? allGrades.reduce((sum, g) => sum + g, 0) / allGrades.length
+        : 0;
+      const highestGrade = allGrades.length > 0 ? Math.max(...allGrades) : 0;
+      const avgGrades = studentsData.map((s) => s.avgGrade).filter((g) => g > 0);
+      const lowestGrade = avgGrades.length > 0 ? Math.min(...avgGrades) : 0;
+
+      setStats({
+        classAverage,
+        highestGrade,
+        lowestGrade,
+        totalStudents: studentsData.length,
+      });
+    } catch (err) {
+      console.error("Error fetching course data:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   const filteredStudents = students.filter((student) => {
     const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -176,6 +359,21 @@ export default function GradesPage() {
             className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
           >
             <div className="flex flex-1 gap-3">
+              {/* Course Selection */}
+              {courses.length > 0 && (
+                <select
+                  value={selectedCourseId}
+                  onChange={(e) => setSelectedCourseId(e.target.value)}
+                  className="h-11 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-neutral-900 backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5 dark:text-white [&>option]:bg-white [&>option]:text-neutral-900 dark:[&>option]:bg-neutral-800 dark:[&>option]:text-white"
+                >
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>
+                      {course.code} - {course.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+
               {/* Search */}
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-neutral-400" />
@@ -205,7 +403,7 @@ export default function GradesPage() {
             {/* Actions */}
             <div className="flex gap-3">
               <Link
-                href="/dashboard/grades/configure"
+                href={`/dashboard/grades/configure${selectedCourseId ? `?courseId=${selectedCourseId}` : ""}`}
                 className="flex h-11 items-center gap-2 rounded-xl border border-purple-600/50 bg-purple-600/10 px-4 text-sm font-semibold text-purple-600 backdrop-blur-sm transition hover:bg-purple-600/20 dark:text-purple-400"
               >
                 <Settings className="h-4 w-4" />
@@ -228,10 +426,10 @@ export default function GradesPage() {
           {/* Grade Statistics */}
           <div className="mb-8 grid gap-6 sm:grid-cols-4">
             {[
-              { label: "Class Average", value: "81.5%", icon: Award, color: "from-green-500 to-emerald-500" },
-              { label: "Highest Grade", value: "95.6%", icon: Star, color: "from-yellow-500 to-orange-500" },
-              { label: "Lowest Grade", value: "50.0%", icon: AlertCircle, color: "from-red-500 to-pink-500" },
-              { label: "Total Students", value: "6", icon: Sparkles, color: "from-blue-500 to-cyan-500" },
+              { label: "Class Average", value: `${stats.classAverage.toFixed(1)}%`, icon: Award, color: "from-green-500 to-emerald-500" },
+              { label: "Highest Grade", value: `${stats.highestGrade.toFixed(1)}%`, icon: Star, color: "from-yellow-500 to-orange-500" },
+              { label: "Lowest Grade", value: `${stats.lowestGrade.toFixed(1)}%`, icon: AlertCircle, color: "from-red-500 to-pink-500" },
+              { label: "Total Students", value: stats.totalStudents.toString(), icon: Sparkles, color: "from-blue-500 to-cyan-500" },
             ].map((stat, index) => {
               const Icon = stat.icon;
               return (
@@ -269,15 +467,20 @@ export default function GradesPage() {
                     <th className="px-6 py-4 text-left text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                       Student
                     </th>
-                    {assignments.map((assignment) => (
-                      <th
-                        key={assignment.id}
-                        className="px-4 py-4 text-center text-sm font-semibold text-neutral-700 dark:text-neutral-300"
-                      >
-                        <div>{assignment.name}</div>
-                        <div className="text-xs font-normal text-neutral-500">{assignment.dueDate}</div>
-                      </th>
-                    ))}
+                    {assignments.map((assignment) => {
+                      const dueDate = assignment.due_date
+                        ? new Date(assignment.due_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                        : "No due date";
+                      return (
+                        <th
+                          key={assignment.id}
+                          className="px-4 py-4 text-center text-sm font-semibold text-neutral-700 dark:text-neutral-300"
+                        >
+                          <div>{assignment.title}</div>
+                          <div className="text-xs font-normal text-neutral-500">{dueDate}</div>
+                        </th>
+                      );
+                    })}
                     <th className="px-6 py-4 text-center text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                       Average
                     </th>
@@ -315,21 +518,25 @@ export default function GradesPage() {
                       </td>
                       {student.assignments.map((grade, idx) => (
                         <td key={idx} className="px-4 py-4 text-center">
-                          <span
-                            className={`inline-flex items-center justify-center rounded-lg px-3 py-1 text-sm font-semibold ${
-                              grade >= 90
-                                ? "bg-green-500/20 text-green-600 dark:text-green-400"
-                                : grade >= 80
-                                ? "bg-blue-500/20 text-blue-600 dark:text-blue-400"
-                                : grade >= 70
-                                ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
-                                : grade >= 60
-                                ? "bg-orange-500/20 text-orange-600 dark:text-orange-400"
-                                : "bg-red-500/20 text-red-600 dark:text-red-400"
-                            }`}
-                          >
-                            {grade}
-                          </span>
+                          {grade !== null ? (
+                            <span
+                              className={`inline-flex items-center justify-center rounded-lg px-3 py-1 text-sm font-semibold ${
+                                grade >= 90
+                                  ? "bg-green-500/20 text-green-600 dark:text-green-400"
+                                  : grade >= 80
+                                  ? "bg-blue-500/20 text-blue-600 dark:text-blue-400"
+                                  : grade >= 70
+                                  ? "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
+                                  : grade >= 60
+                                  ? "bg-orange-500/20 text-orange-600 dark:text-orange-400"
+                                  : "bg-red-500/20 text-red-600 dark:text-red-400"
+                              }`}
+                            >
+                              {grade.toFixed(1)}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-neutral-400">-</span>
+                          )}
                         </td>
                       ))}
                       <td className="px-6 py-4 text-center">
@@ -369,7 +576,24 @@ export default function GradesPage() {
               </table>
             </div>
 
-            {filteredStudents.length === 0 && (
+            {loading ? (
+              <div className="py-16 text-center">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-purple-600" />
+                <div className="mt-4 text-sm text-neutral-600 dark:text-neutral-400">
+                  Loading grades...
+                </div>
+              </div>
+            ) : courses.length === 0 ? (
+              <div className="py-16 text-center">
+                <BookOpen className="mx-auto h-12 w-12 text-neutral-400" />
+                <div className="mt-4 text-lg font-semibold text-neutral-900 dark:text-white">
+                  No courses found
+                </div>
+                <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                  You need to be assigned to a course to view grades
+                </div>
+              </div>
+            ) : filteredStudents.length === 0 ? (
               <div className="py-16 text-center">
                 <div className="mb-4 text-6xl">🔍</div>
                 <div className="text-lg font-semibold text-neutral-900 dark:text-white">
@@ -379,7 +603,7 @@ export default function GradesPage() {
                   Try adjusting your search or filters
                 </div>
               </div>
-            )}
+            ) : null}
           </motion.div>
         </div>
       </main>

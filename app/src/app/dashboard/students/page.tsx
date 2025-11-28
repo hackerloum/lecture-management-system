@@ -20,133 +20,341 @@ import {
   Share2,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-// Mock student data with gamification
-const studentsData = [
-  {
-    id: 1,
-    name: "Emily Chen",
-    email: "emily.chen@university.edu",
-    phone: "+1 (555) 123-4567",
-    avatar: "EC",
-    major: "Computer Science",
-    year: "Junior",
-    gpa: 3.9,
-    attendance: 98,
-    submissions: "12/12",
-    trend: "up",
-    status: "active",
-    badges: ["🏆 Top Performer", "🔥 7-Day Streak", "⭐ Perfect Attendance"],
-    points: 2450,
-    level: 15,
-    lastActive: "2 hours ago",
-  },
-  {
-    id: 2,
-    name: "David Lee",
-    email: "david.lee@university.edu",
-    phone: "+1 (555) 234-5678",
-    avatar: "DL",
-    major: "Computer Science",
-    year: "Senior",
-    gpa: 3.7,
-    attendance: 92,
-    submissions: "11/12",
-    trend: "up",
-    status: "active",
-    badges: ["💡 Problem Solver", "📚 Bookworm"],
-    points: 1980,
-    level: 12,
-    lastActive: "5 hours ago",
-  },
-  {
-    id: 3,
-    name: "Sarah Johnson",
-    email: "sarah.j@university.edu",
-    phone: "+1 (555) 345-6789",
-    avatar: "SJ",
-    major: "Information Systems",
-    year: "Sophomore",
-    gpa: 3.5,
-    attendance: 88,
-    submissions: "10/12",
-    trend: "up",
-    status: "active",
-    badges: ["🎯 Goal Getter"],
-    points: 1650,
-    level: 10,
-    lastActive: "1 day ago",
-  },
-  {
-    id: 4,
-    name: "Mike Brown",
-    email: "mike.brown@university.edu",
-    phone: "+1 (555) 456-7890",
-    avatar: "MB",
-    major: "Computer Science",
-    year: "Freshman",
-    gpa: 2.8,
-    attendance: 72,
-    submissions: "7/12",
-    trend: "down",
-    status: "warning",
-    badges: [],
-    points: 850,
-    level: 5,
-    lastActive: "3 days ago",
-  },
-  {
-    id: 5,
-    name: "Lisa Park",
-    email: "lisa.park@university.edu",
-    phone: "+1 (555) 567-8901",
-    avatar: "LP",
-    major: "Data Science",
-    year: "Junior",
-    gpa: 3.8,
-    attendance: 95,
-    submissions: "12/12",
-    trend: "up",
-    status: "active",
-    badges: ["🌟 Rising Star", "💪 Consistent Performer"],
-    points: 2100,
-    level: 13,
-    lastActive: "1 hour ago",
-  },
-  {
-    id: 6,
-    name: "John Smith",
-    email: "john.smith@university.edu",
-    phone: "+1 (555) 678-9012",
-    avatar: "JS",
-    major: "Computer Science",
-    year: "Sophomore",
-    gpa: 2.1,
-    attendance: 55,
-    submissions: "4/12",
-    trend: "down",
-    status: "critical",
-    badges: [],
-    points: 350,
-    level: 2,
-    lastActive: "1 week ago",
-  },
-];
+// Student data interface
+interface StudentData {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  avatar: string;
+  major: string | null;
+  year: string | null;
+  gpa: number | null;
+  attendance: number;
+  submissions: string;
+  trend: "up" | "down";
+  status: "active" | "warning" | "critical";
+  badges: string[];
+  points: number;
+  level: number;
+  lastActive: string;
+}
+
+// Helper function to get initials from name
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+// Helper function to format time ago
+function formatTimeAgo(date: Date | null): string {
+  if (!date) return "Never";
+  
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  
+  if (diffMins < 60) return `${diffMins} minutes ago`;
+  if (diffHours < 24) return `${diffHours} hours ago`;
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return `${Math.floor(diffDays / 7)} weeks ago`;
+}
+
+// Helper function to calculate student status
+function calculateStatus(
+  attendance: number,
+  gpa: number | null,
+  completedAssignments: number,
+  totalAssignments: number
+): "active" | "warning" | "critical" {
+  const submissionRate = totalAssignments > 0 ? (completedAssignments / totalAssignments) * 100 : 0;
+  const gpaValue = gpa || 0;
+  
+  if (attendance < 60 || gpaValue < 2.0 || submissionRate < 50) {
+    return "critical";
+  }
+  if (attendance < 75 || gpaValue < 2.5 || submissionRate < 70) {
+    return "warning";
+  }
+  return "active";
+}
 
 export default function StudentsPage() {
   const prefersReducedMotion = useReducedMotion();
   const [searchQuery, setSearchQuery] = useState("");
   const [filterStatus, setFilterStatus] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [students, setStudents] = useState<StudentData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredStudents = studentsData.filter((student) => {
-    const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase());
+  useEffect(() => {
+    async function fetchStudents() {
+      try {
+        setLoading(true);
+        const supabase = createSupabaseBrowserClient();
+
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw new Error("Not authenticated");
+        }
+
+        // Get user's profile to check role and organization
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("organization_id, role")
+          .eq("id", user.id)
+          .single();
+
+        if (!profile) {
+          throw new Error("Profile not found");
+        }
+
+        let studentsData: any[] = [];
+
+        // If user is admin, fetch all students in their organization (if they have one)
+        // Otherwise, fetch students from courses they teach
+        if (profile.role === "admin" && profile.organization_id) {
+          const { data: orgStudents, error: orgError } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("role", "student")
+            .eq("organization_id", profile.organization_id)
+            .order("full_name", { ascending: true });
+
+          if (orgError) {
+            console.error("Error fetching org students:", orgError);
+          } else {
+            studentsData = orgStudents || [];
+          }
+        } else {
+          // Fetch courses where user is a collaborator
+          const { data: collaborations } = await supabase
+            .from("course_collaborators")
+            .select("course_id")
+            .eq("profile_id", user.id);
+
+          const courseIds = collaborations?.map((c) => c.course_id) || [];
+
+          if (courseIds.length === 0) {
+            // No courses, return empty list
+            setStudents([]);
+            setLoading(false);
+            return;
+          }
+
+          // Fetch students enrolled in those courses
+          const { data: enrollments } = await supabase
+            .from("course_enrollments")
+            .select("student_id")
+            .in("course_id", courseIds)
+            .eq("status", "active");
+
+          const studentIds = [...new Set(enrollments?.map((e) => e.student_id) || [])];
+
+          if (studentIds.length === 0) {
+            setStudents([]);
+            setLoading(false);
+            return;
+          }
+
+          // Fetch student profiles
+          const { data: courseStudents, error: studentsError } = await supabase
+            .from("profiles")
+            .select("*")
+            .in("id", studentIds)
+            .eq("role", "student")
+            .order("full_name", { ascending: true });
+
+          if (studentsError) {
+            throw new Error("Failed to fetch students");
+          }
+
+          studentsData = courseStudents || [];
+        }
+
+        if (studentsData.length === 0) {
+          setStudents([]);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch additional data for each student
+        const studentsWithData = await Promise.all(
+          studentsData.map(async (student) => {
+            // Get enrollments to find courses
+            const { data: enrollments } = await supabase
+              .from("course_enrollments")
+              .select("course_id")
+              .eq("student_id", student.id)
+              .eq("status", "active");
+
+            const courseIds = enrollments?.map((e) => e.course_id) || [];
+
+            // Calculate attendance across all courses
+            let totalSessions = 0;
+            let presentSessions = 0;
+
+            if (courseIds.length > 0) {
+              // Get all attendance sessions for enrolled courses
+              const { data: sessions } = await supabase
+                .from("attendance_sessions")
+                .select("id")
+                .in("course_id", courseIds)
+                .eq("status", "ended");
+
+              totalSessions = sessions?.length || 0;
+
+              if (totalSessions > 0) {
+                // Get attendance records for this student
+                const sessionIds = sessions?.map((s) => s.id) || [];
+                const { data: attendanceRecords } = await supabase
+                  .from("attendance_records")
+                  .select("status")
+                  .in("session_id", sessionIds)
+                  .eq("student_id", student.id);
+
+                if (attendanceRecords) {
+                  presentSessions = attendanceRecords.filter(
+                    (r) => r.status === "present" || r.status === "late"
+                  ).length;
+                }
+              }
+            }
+
+            const attendance = totalSessions > 0
+              ? Math.round((presentSessions / totalSessions) * 100)
+              : 0; // No sessions yet
+
+            // Calculate submissions
+            let completedAssignments = 0;
+            let totalAssignments = 0;
+
+            if (courseIds.length > 0) {
+              const { data: assignments } = await supabase
+                .from("assignments")
+                .select("id")
+                .in("course_id", courseIds)
+                .eq("status", "published");
+
+              totalAssignments = assignments?.length || 0;
+
+              if (totalAssignments > 0) {
+                const { data: submissions } = await supabase
+                  .from("submissions")
+                  .select("id")
+                  .eq("student_id", student.id)
+                  .in("course_id", courseIds)
+                  .eq("status", "submitted");
+
+                completedAssignments = submissions?.length || 0;
+              }
+            }
+
+            const submissionsText = `${completedAssignments}/${totalAssignments}`;
+
+            // Get badges
+            const { data: badges } = await supabase
+              .from("student_badges")
+              .select("badge_name")
+              .eq("student_id", student.id)
+              .limit(5);
+
+            const badgeNames = badges?.map((b) => b.badge_name) || [];
+
+            // Get progress/points - aggregate across all courses
+            const { data: progress } = await supabase
+              .from("student_progress")
+              .select("experience_points, level, last_active_at")
+              .eq("student_id", student.id);
+
+            // Sum all experience points and get max level
+            const totalPoints = progress?.reduce((sum, p) => sum + (p.experience_points || 0), 0) || 0;
+            const maxLevel = progress && progress.length > 0
+              ? Math.max(...progress.map((p) => p.level || 1))
+              : 1;
+            
+            // Get most recent activity
+            const lastActive = progress && progress.length > 0
+              ? progress.reduce((latest, p) => {
+                  if (!p.last_active_at) return latest;
+                  const pDate = new Date(p.last_active_at);
+                  return !latest || pDate > latest ? pDate : latest;
+                }, null as Date | null)
+              : student.last_login_at
+              ? new Date(student.last_login_at)
+              : null;
+
+            // Calculate status
+            const status = calculateStatus(
+              attendance,
+              student.gpa,
+              completedAssignments,
+              totalAssignments
+            );
+
+            // Determine trend (simplified - could be improved with historical data)
+            const trend: "up" | "down" = attendance >= 80 && (student.gpa || 0) >= 3.0 ? "up" : "down";
+
+            return {
+              id: student.id,
+              name: student.full_name,
+              email: student.email,
+              phone: student.phone,
+              avatar: getInitials(student.full_name),
+              major: student.major,
+              year: student.year,
+              gpa: student.gpa ? Number(student.gpa) : null,
+              attendance,
+              submissions: submissionsText,
+              trend,
+              status,
+              badges: badgeNames,
+              points: totalPoints,
+              level: maxLevel,
+              lastActive: formatTimeAgo(lastActive),
+            };
+          })
+        );
+
+        setStudents(studentsWithData);
+        setLoading(false);
+      } catch (err) {
+        console.error("Error fetching students:", err);
+        setError(err instanceof Error ? err.message : "Failed to fetch students");
+        setLoading(false);
+      }
+    }
+
+    void fetchStudents();
+  }, []);
+
+  const filteredStudents = students.filter((student) => {
+    const matchesSearch = student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      student.email.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = filterStatus === "all" || student.status === filterStatus;
     return matchesSearch && matchesFilter;
   });
+
+  // Calculate statistics
+  const totalStudents = students.length;
+  const activeStudents = students.filter((s) => s.status === "active").length;
+  const atRiskStudents = students.filter((s) => s.status === "critical" || s.status === "warning").length;
+  const avgGpa = students.length > 0
+    ? (students.reduce((sum, s) => sum + (s.gpa || 0), 0) / students.length).toFixed(1)
+    : "0.0";
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -212,13 +420,37 @@ export default function StudentsPage() {
             </p>
           </motion.div>
 
-          {/* Toolbar */}
-          <motion.div
-            initial={prefersReducedMotion ? undefined : { opacity: 0, y: 20 }}
-            animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-            className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
-          >
+          {/* Loading State */}
+          {loading && (
+            <div className="py-16 text-center">
+              <div className="mb-4 text-6xl">⏳</div>
+              <div className="text-lg font-semibold text-neutral-900 dark:text-white">
+                Loading students...
+              </div>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && !loading && (
+            <div className="mb-8 py-8 text-center">
+              <div className="mb-4 text-6xl">⚠️</div>
+              <div className="text-lg font-semibold text-neutral-900 dark:text-white">
+                {error}
+              </div>
+              <div className="mt-4 text-sm text-neutral-600 dark:text-neutral-400">
+                You can still add students manually or invite them.
+              </div>
+            </div>
+          )}
+
+          {/* Toolbar - Always show if not loading */}
+          {!loading && (
+            <motion.div
+              initial={prefersReducedMotion ? undefined : { opacity: 0, y: 20 }}
+              animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+              className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"
+            >
             <div className="flex flex-1 gap-3">
               {/* Search */}
               <div className="relative flex-1 max-w-md">
@@ -263,14 +495,16 @@ export default function StudentsPage() {
               </Link>
             </div>
           </motion.div>
+          )}
 
           {/* Statistics Cards */}
+          {!loading && students.length > 0 && (
           <div className="mb-8 grid gap-6 sm:grid-cols-4">
             {[
-              { label: "Total Students", value: "6", icon: Target, color: "from-blue-500 to-cyan-500" },
-              { label: "Active", value: "4", icon: CheckCircle, color: "from-green-500 to-emerald-500" },
-              { label: "At Risk", value: "2", icon: AlertCircle, color: "from-red-500 to-pink-500" },
-              { label: "Avg. GPA", value: "3.3", icon: Award, color: "from-purple-500 to-pink-500" },
+              { label: "Total Students", value: totalStudents.toString(), icon: Target, color: "from-blue-500 to-cyan-500" },
+              { label: "Active", value: activeStudents.toString(), icon: CheckCircle, color: "from-green-500 to-emerald-500" },
+              { label: "At Risk", value: atRiskStudents.toString(), icon: AlertCircle, color: "from-red-500 to-pink-500" },
+              { label: "Avg. GPA", value: avgGpa, icon: Award, color: "from-purple-500 to-pink-500" },
             ].map((stat, index) => {
               const Icon = stat.icon;
               return (
@@ -293,8 +527,10 @@ export default function StudentsPage() {
               );
             })}
           </div>
+          )}
 
           {/* Student Grid */}
+          {!loading && students.length > 0 && (
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {filteredStudents.map((student, index) => (
               <motion.div
@@ -321,11 +557,13 @@ export default function StudentsPage() {
                     <h3 className="mb-1 text-lg font-bold text-neutral-900 dark:text-white">
                       {student.name}
                     </h3>
-                    <p className="mb-1 text-sm text-neutral-600 dark:text-neutral-400">
-                      {student.major}
-                    </p>
+                    {student.major && (
+                      <p className="mb-1 text-sm text-neutral-600 dark:text-neutral-400">
+                        {student.major}
+                      </p>
+                    )}
                     <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                      {student.year} • {student.lastActive}
+                      {student.year || "N/A"} • {student.lastActive}
                     </p>
                   </div>
                 </div>
@@ -371,7 +609,9 @@ export default function StudentsPage() {
                 <div className="mb-4 grid grid-cols-3 gap-3">
                   <div className="text-center">
                     <div className="text-xs text-neutral-600 dark:text-neutral-400">GPA</div>
-                    <div className="mt-1 font-bold text-neutral-900 dark:text-white">{student.gpa}</div>
+                    <div className="mt-1 font-bold text-neutral-900 dark:text-white">
+                      {student.gpa !== null ? student.gpa.toFixed(1) : "N/A"}
+                    </div>
                   </div>
                   <div className="text-center">
                     <div className="text-xs text-neutral-600 dark:text-neutral-400">Attendance</div>
@@ -389,10 +629,12 @@ export default function StudentsPage() {
                     <Mail className="h-3.5 w-3.5" />
                     {student.email}
                   </div>
-                  <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
-                    <Phone className="h-3.5 w-3.5" />
-                    {student.phone}
-                  </div>
+                  {student.phone && (
+                    <div className="flex items-center gap-2 text-xs text-neutral-600 dark:text-neutral-400">
+                      <Phone className="h-3.5 w-3.5" />
+                      {student.phone}
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}
@@ -410,8 +652,37 @@ export default function StudentsPage() {
               </motion.div>
             ))}
           </div>
+          )}
 
-          {filteredStudents.length === 0 && (
+          {!loading && students.length === 0 && !error && (
+            <div className="py-16 text-center">
+              <div className="mb-4 text-6xl">👥</div>
+              <div className="text-lg font-semibold text-neutral-900 dark:text-white">
+                No students yet
+              </div>
+              <div className="text-sm text-neutral-600 dark:text-neutral-400 mb-6">
+                Get started by adding students manually or inviting them via email
+              </div>
+              <div className="flex gap-3 justify-center">
+                <Link
+                  href="/dashboard/students/invite"
+                  className="flex h-11 items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-6 text-sm font-semibold backdrop-blur-sm transition hover:bg-white/20 dark:border-white/10 dark:bg-white/5"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Invite Students
+                </Link>
+                <Link
+                  href="/dashboard/students/create"
+                  className="flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-6 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Manually
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {!loading && students.length > 0 && filteredStudents.length === 0 && (
             <div className="py-16 text-center">
               <div className="mb-4 text-6xl">🔍</div>
               <div className="text-lg font-semibold text-neutral-900 dark:text-white">

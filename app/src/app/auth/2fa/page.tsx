@@ -29,7 +29,7 @@ export default function TwoFactorPage() {
         <div className="relative z-10">
           <div className="container">
             <Suspense fallback={<div className="flex items-center justify-center p-8">Loading...</div>}>
-              <TwoFactorForm />
+            <TwoFactorForm />
             </Suspense>
           </div>
         </div>

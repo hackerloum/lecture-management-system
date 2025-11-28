@@ -19,92 +19,333 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-// Mock courses data with collaboration features
-const coursesData = [
-  {
-    id: 1,
-    code: "CS 101",
-    name: "Introduction to Computer Science",
-    semester: "Spring 2025",
-    students: 45,
-    schedule: "Mon/Wed 10:00 AM - 11:30 AM",
-    room: "Engineering 201",
-    progress: 68,
-    nextClass: "Monday, 10:00 AM",
-    assignments: 12,
-    completedAssignments: 8,
-    avgGrade: 88,
-    color: "from-blue-500 to-cyan-500",
-    collaborators: ["Dr. Smith", "TA: John"],
-    unreadMessages: 5,
-    recentActivity: "New assignment posted 2 hours ago",
-  },
-  {
-    id: 2,
-    code: "CS 201",
-    name: "Data Structures & Algorithms",
-    semester: "Spring 2025",
-    students: 38,
-    schedule: "Tue/Thu 2:00 PM - 3:30 PM",
-    room: "Engineering 305",
-    progress: 45,
-    nextClass: "Tuesday, 2:00 PM",
-    assignments: 10,
-    completedAssignments: 4,
-    avgGrade: 82,
-    color: "from-purple-500 to-pink-500",
-    collaborators: ["Dr. Johnson", "TA: Sarah"],
-    unreadMessages: 12,
-    recentActivity: "3 new submissions pending review",
-  },
-  {
-    id: 3,
-    code: "CS 301",
-    name: "Database Management Systems",
-    semester: "Spring 2025",
-    students: 32,
-    schedule: "Wed/Fri 1:00 PM - 2:30 PM",
-    room: "Engineering 410",
-    progress: 72,
-    nextClass: "Wednesday, 1:00 PM",
-    assignments: 8,
-    completedAssignments: 6,
-    avgGrade: 85,
-    color: "from-green-500 to-emerald-500",
-    collaborators: ["Dr. Lee"],
-    unreadMessages: 3,
-    recentActivity: "Quiz results published",
-  },
-  {
-    id: 4,
-    code: "CS 401",
-    name: "Machine Learning",
-    semester: "Spring 2025",
-    students: 28,
-    schedule: "Mon/Thu 3:00 PM - 4:30 PM",
-    room: "Engineering 505",
-    progress: 35,
-    nextClass: "Monday, 3:00 PM",
-    assignments: 15,
-    completedAssignments: 5,
-    avgGrade: 90,
-    color: "from-orange-500 to-red-500",
-    collaborators: ["Dr. Chen", "Dr. Park", "TA: Mike"],
-    unreadMessages: 8,
-    recentActivity: "Project teams assigned",
-  },
+interface Course {
+  id: string;
+  code: string;
+  name: string;
+  semester: string;
+  year: number;
+  students: number;
+  schedule: string;
+  room: string | null;
+  progress: number;
+  nextClass: string;
+  assignments: number;
+  completedAssignments: number;
+  avgGrade: number;
+  color: string;
+  collaborators: string[];
+  unreadMessages: number;
+  recentActivity: string;
+}
+
+const colorMap = [
+  "from-blue-500 to-cyan-500",
+  "from-purple-500 to-pink-500",
+  "from-green-500 to-emerald-500",
+  "from-orange-500 to-red-500",
+  "from-indigo-500 to-purple-500",
 ];
+
+const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 export default function CoursesPage() {
   const prefersReducedMotion = useReducedMotion();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({
+    totalCourses: 0,
+    totalStudents: 0,
+    activeAssignments: 0,
+    avgCompletion: 0,
+  });
 
-  const filteredCourses = coursesData.filter((course) =>
+  useEffect(() => {
+    async function fetchCourses() {
+      try {
+        setLoading(true);
+        const supabase = createSupabaseBrowserClient();
+
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw new Error("Not authenticated");
+        }
+
+        // Fetch courses where user is a collaborator
+        const { data: collaborators } = await supabase
+          .from("course_collaborators")
+          .select(`
+            course_id,
+            courses (
+              id,
+              code,
+              name,
+              semester,
+              year,
+              room,
+              color,
+              status
+            )
+          `)
+          .eq("profile_id", user.id);
+
+        // Also check if user is admin
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single();
+
+        let courseIds: string[] = [];
+        let coursesData: any[] = [];
+
+        if ((profile as any)?.role === "admin") {
+          // Admin can see all active courses
+          const { data: allCourses } = await supabase
+            .from("courses")
+            .select("*")
+            .eq("status", "active");
+          coursesData = (allCourses as any) || [];
+          courseIds = coursesData.map((c: any) => c.id);
+        } else {
+          // Regular user sees only their courses
+          coursesData = ((collaborators as any) || [])
+            .map((c: any) => c.courses)
+            .filter((c: any) => c && c.status === "active");
+          courseIds = coursesData.map((c: any) => c.id);
+        }
+
+        if (courseIds.length === 0) {
+          setCourses([]);
+          setStats({
+            totalCourses: 0,
+            totalStudents: 0,
+            activeAssignments: 0,
+            avgCompletion: 0,
+          });
+          setLoading(false);
+          return;
+        }
+
+        // Fetch enrollments for all courses
+        const { data: enrollments } = await supabase
+          .from("course_enrollments")
+          .select("course_id, student_id, status")
+          .in("course_id", courseIds)
+          .eq("status", "active");
+
+        // Fetch assignments
+        const { data: assignments } = await supabase
+          .from("assignments")
+          .select("id, course_id, status")
+          .in("course_id", courseIds);
+
+        // Fetch student progress
+        const { data: progressData } = await supabase
+          .from("student_progress")
+          .select("course_id, assignments_completed, assignments_total")
+          .in("course_id", courseIds);
+
+        // Fetch schedules
+        const { data: schedules } = await supabase
+          .from("schedules")
+          .select("course_id, day_of_week, start_time, recurring")
+          .in("course_id", courseIds)
+          .eq("recurring", true);
+
+        // Fetch collaborators for each course
+        const { data: allCollaborators } = await supabase
+          .from("course_collaborators")
+          .select(`
+            course_id,
+            profile_id,
+            profiles (
+              full_name,
+              role
+            )
+          `)
+          .in("course_id", courseIds);
+
+        // Fetch unread messages count (simplified - you may want to implement this properly)
+        const unreadCounts: Record<string, number> = {};
+
+        // Process courses
+        const processedCourses: Course[] = await Promise.all(
+          coursesData.map(async (course: any, index: number) => {
+            const courseId = course.id;
+            const courseEnrollments = (enrollments as any)?.filter((e: any) => e.course_id === courseId) || [];
+            const students = courseEnrollments.length;
+
+            const courseAssignments = (assignments as any)?.filter((a: any) => a.course_id === courseId) || [];
+            const totalAssignments = courseAssignments.length;
+            const completedAssignments = courseAssignments.filter((a: any) => a.status === "closed").length;
+
+            const courseProgress = (progressData as any)?.filter((p: any) => p.course_id === courseId) || [];
+            const avgProgress = courseProgress.length > 0
+              ? Math.round(
+                  courseProgress.reduce((sum: number, p: any) => {
+                    const studentProgress = p.assignments_total > 0
+                      ? (p.assignments_completed / p.assignments_total) * 100
+                      : 0;
+                    return sum + studentProgress;
+                  }, 0) / courseProgress.length
+                )
+              : 0;
+
+            // Calculate average grade
+            const { data: gradeData } = await supabase
+              .from("student_progress")
+              .select("current_grade")
+              .eq("course_id", courseId)
+              .not("current_grade", "is", null);
+
+            const avgGrade = (gradeData as any)?.length > 0
+              ? Math.round(
+                  (gradeData as any).reduce((sum: number, g: any) => sum + (g.current_grade || 0), 0) /
+                  (gradeData as any).length
+                )
+              : 0;
+
+            // Get schedule
+            const courseSchedules = (schedules as any)?.filter((s: any) => s.course_id === courseId) || [];
+            let scheduleText = "Not scheduled";
+            let nextClassText = "No upcoming classes";
+
+            if (courseSchedules.length > 0) {
+              const scheduleParts = courseSchedules.map((s: any) => {
+                const dayName = dayNames[s.day_of_week];
+                const startTime = new Date(`2000-01-01T${s.start_time}`);
+                return `${dayName} ${startTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+              });
+              scheduleText = scheduleParts.join(", ");
+
+              // Find next class
+              const today = new Date();
+              const currentDay = today.getDay();
+              const currentTime = today.getHours() * 60 + today.getMinutes();
+
+              const upcomingSchedules = courseSchedules
+                .map((s: any) => {
+                  const startMinutes = new Date(`2000-01-01T${s.start_time}`).getHours() * 60 +
+                    new Date(`2000-01-01T${s.start_time}`).getMinutes();
+                  return { ...s, startMinutes };
+                })
+                .filter((s: any) => {
+                  if (s.day_of_week > currentDay) return true;
+                  if (s.day_of_week === currentDay && s.startMinutes > currentTime) return true;
+                  return false;
+                })
+                .sort((a: any, b: any) => {
+                  if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week;
+                  return a.startMinutes - b.startMinutes;
+                });
+
+              if (upcomingSchedules.length > 0) {
+                const next = upcomingSchedules[0];
+                const dayName = dayNames[next.day_of_week];
+                const startTime = new Date(`2000-01-01T${next.start_time}`);
+                nextClassText = `${dayName}, ${startTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+              } else if (courseSchedules.length > 0) {
+                const nextWeekSchedule = courseSchedules[0];
+                const dayName = dayNames[nextWeekSchedule.day_of_week];
+                const startTime = new Date(`2000-01-01T${nextWeekSchedule.start_time}`);
+                nextClassText = `Next ${dayName}, ${startTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+              }
+            }
+
+            // Get collaborators
+            const courseCollaborators = ((allCollaborators as any) || [])
+              .filter((c: any) => c.course_id === courseId)
+              .map((c: any) => {
+                const profile = c.profiles;
+                if (!profile) return null;
+                const role = (profile as any).role;
+                const name = (profile as any).full_name || "Unknown";
+                if (role === "ta") return `TA: ${name}`;
+                return name;
+              })
+              .filter(Boolean) as string[];
+
+            // Get recent activity (latest announcement or assignment)
+            const { data: recentAnnouncement } = await supabase
+              .from("announcements")
+              .select("title, created_at")
+              .eq("course_id", courseId)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .single();
+
+            let recentActivity = "No recent activity";
+            if (recentAnnouncement) {
+              const createdDate = new Date((recentAnnouncement as any).created_at);
+              const now = new Date();
+              const diffHours = Math.floor((now.getTime() - createdDate.getTime()) / (1000 * 60 * 60));
+              if (diffHours < 24) {
+                recentActivity = `New announcement: ${(recentAnnouncement as any).title}`;
+              }
+            }
+
+            // Get color
+            const colorIndex = course.color ? parseInt(course.color) % colorMap.length : index % colorMap.length;
+            const color = colorMap[colorIndex] || colorMap[0];
+
+            return {
+              id: courseId,
+              code: course.code,
+              name: course.name,
+              semester: `${course.semester} ${course.year}`,
+              year: course.year,
+              students,
+              schedule: scheduleText,
+              room: course.room,
+              progress: avgProgress,
+              nextClass: nextClassText,
+              assignments: totalAssignments,
+              completedAssignments,
+              avgGrade,
+              color,
+              collaborators: courseCollaborators,
+              unreadMessages: unreadCounts[courseId] || 0,
+              recentActivity,
+            };
+          })
+        );
+
+        setCourses(processedCourses);
+
+        // Calculate stats
+        const totalStudents = new Set((enrollments as any)?.map((e: any) => e.student_id) || []).size;
+        const activeAssignments = (assignments as any)?.filter((a: any) => a.status === "published").length || 0;
+        const avgCompletion = processedCourses.length > 0
+          ? Math.round(processedCourses.reduce((sum, c) => sum + c.progress, 0) / processedCourses.length)
+          : 0;
+
+        setStats({
+          totalCourses: processedCourses.length,
+          totalStudents,
+          activeAssignments,
+          avgCompletion,
+        });
+
+        setLoading(false);
+      } catch (err) {
+        console.error("Courses fetch error:", err);
+        setLoading(false);
+      }
+    }
+
+    void fetchCourses();
+  }, []);
+
+  const filteredCourses = courses.filter((course) =>
     course.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     course.code.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -142,6 +383,12 @@ export default function CoursesPage() {
             </p>
           </motion.div>
 
+          {loading && (
+            <div className="py-16 text-center">
+              <div className="text-lg font-semibold text-neutral-900 dark:text-white">Loading courses...</div>
+            </div>
+          )}
+
           {/* Toolbar */}
           <motion.div
             initial={prefersReducedMotion ? undefined : { opacity: 0, y: 20 }}
@@ -172,12 +419,13 @@ export default function CoursesPage() {
           </motion.div>
 
           {/* Quick Stats */}
-          <div className="mb-8 grid gap-6 sm:grid-cols-4">
+          {!loading && (
+            <div className="mb-8 grid gap-6 sm:grid-cols-4">
             {[
-              { label: "Total Courses", value: "4", icon: BookOpen, color: "from-blue-500 to-cyan-500" },
-              { label: "Total Students", value: "143", icon: Users, color: "from-purple-500 to-pink-500" },
-              { label: "Active Assignments", value: "20", icon: FileText, color: "from-green-500 to-emerald-500" },
-              { label: "Avg. Completion", value: "55%", icon: CheckCircle, color: "from-orange-500 to-red-500" },
+              { label: "Total Courses", value: stats.totalCourses.toString(), icon: BookOpen, color: "from-blue-500 to-cyan-500" },
+              { label: "Total Students", value: stats.totalStudents.toString(), icon: Users, color: "from-purple-500 to-pink-500" },
+              { label: "Active Assignments", value: stats.activeAssignments.toString(), icon: FileText, color: "from-green-500 to-emerald-500" },
+              { label: "Avg. Completion", value: `${stats.avgCompletion}%`, icon: CheckCircle, color: "from-orange-500 to-red-500" },
             ].map((stat, index) => {
               const Icon = stat.icon;
               return (
@@ -199,11 +447,13 @@ export default function CoursesPage() {
                 </motion.div>
               );
             })}
-          </div>
+            </div>
+          )}
 
           {/* Courses Grid */}
-          <div className="grid gap-6 lg:grid-cols-2">
-            {filteredCourses.map((course, index) => (
+          {!loading && (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {filteredCourses.map((course, index) => (
               <motion.div
                 key={course.id}
                 initial={prefersReducedMotion ? undefined : { opacity: 0, y: 20 }}
@@ -327,7 +577,6 @@ export default function CoursesPage() {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      console.log('Open clicked for course:', course.id);
                       router.push(`/dashboard/courses/${course.id}`);
                     }}
                     className="flex items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-white/10 dark:text-neutral-300"
@@ -340,7 +589,6 @@ export default function CoursesPage() {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      console.log('Meet clicked for course:', course.id);
                       router.push(`/dashboard/courses/${course.id}/meet`);
                     }}
                     className="flex items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-white/10 dark:text-neutral-300"
@@ -353,7 +601,6 @@ export default function CoursesPage() {
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
-                      console.log('Chat clicked for course:', course.id);
                       router.push(`/dashboard/courses/${course.id}/chat`);
                     }}
                     className="flex items-center justify-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold text-neutral-700 transition hover:bg-white/10 dark:text-neutral-300"
@@ -363,18 +610,30 @@ export default function CoursesPage() {
                   </button>
                 </div>
               </motion.div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
-          {filteredCourses.length === 0 && (
+          {!loading && filteredCourses.length === 0 && (
             <div className="py-16 text-center">
-              <div className="mb-4 text-6xl">🔍</div>
+              <div className="mb-4 text-6xl">📚</div>
               <div className="text-lg font-semibold text-neutral-900 dark:text-white">
-                No courses found
+                {courses.length === 0 ? "No courses yet" : "No courses found"}
               </div>
               <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                Try a different search query
+                {courses.length === 0 
+                  ? "Create your first course to get started"
+                  : "Try a different search query"}
               </div>
+              {courses.length === 0 && (
+                <Link
+                  href="/dashboard/courses/create"
+                  className="mt-4 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
+                >
+                  <Plus className="h-4 w-4" />
+                  Create Your First Course
+                </Link>
+              )}
             </div>
           )}
         </div>

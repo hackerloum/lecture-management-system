@@ -17,41 +17,63 @@ import {
   Activity,
   TrendingUp,
   Shield,
-  Zap,
   Printer,
+  Loader2,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useState, useEffect } from "react";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-// Mock data
-const courses = [
-  { id: "1", code: "CS 101", name: "Intro to Computer Science", students: 45 },
-  { id: "2", code: "CS 201", name: "Data Structures", students: 38 },
-  { id: "3", code: "CS 301", name: "Database Systems", students: 32 },
-];
+// Course interface
+interface Course {
+  id: string;
+  code: string;
+  name: string;
+  students: number;
+}
 
-const studentsData = [
-  { id: 1, name: "Emily Chen", avatar: "EC", studentId: "STU-2025-001" },
-  { id: 2, name: "David Lee", avatar: "DL", studentId: "STU-2025-002" },
-  { id: 3, name: "Sarah Johnson", avatar: "SJ", studentId: "STU-2025-003" },
-  { id: 4, name: "Mike Brown", avatar: "MB", studentId: "STU-2025-004" },
-  { id: 5, name: "Lisa Park", avatar: "LP", studentId: "STU-2025-005" },
-  { id: 6, name: "James Wilson", avatar: "JW", studentId: "STU-2025-006" },
-  { id: 7, name: "Maria Garcia", avatar: "MG", studentId: "STU-2025-007" },
-  { id: 8, name: "Robert Taylor", avatar: "RT", studentId: "STU-2025-008" },
-  { id: 9, name: "Jennifer Martinez", avatar: "JM", studentId: "STU-2025-009" },
-  { id: 10, name: "Daniel Anderson", avatar: "DA", studentId: "STU-2025-010" },
-];
+// Student interface
+interface Student {
+  id: string;
+  name: string;
+  avatar: string;
+  studentId: string;
+}
+
+// Attendance session interface
+interface AttendanceSession {
+  id: string;
+  token: string;
+  session_date: string;
+  start_time: string;
+  end_time: string | null;
+  status: string;
+  time_limit_minutes: number;
+}
+
+// Attendance record interface
+interface AttendanceRecord {
+  id: string;
+  student_id: string;
+  status: string;
+  check_in_time: string;
+  student_name: string;
+  student_identifier: string;
+}
 
 export default function AttendancePage() {
   const prefersReducedMotion = useReducedMotion();
-  const [selectedCourse, setSelectedCourse] = useState(courses[0].id);
+  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [selectedCourse, setSelectedCourse] = useState<string>("");
+  const [students, setStudents] = useState<Student[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   
   // Session management
   const [isSessionActive, setIsSessionActive] = useState(false);
+  const [currentSession, setCurrentSession] = useState<AttendanceSession | null>(null);
   const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [timeLimit, setTimeLimit] = useState(15); // minutes
@@ -61,18 +83,259 @@ export default function AttendancePage() {
   const [showQRModal, setShowQRModal] = useState(false);
   
   // Attendance tracking
-  const [presentStudents, setPresentStudents] = useState<number[]>([]);
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [recentCheckIns, setRecentCheckIns] = useState<{
-    studentId: number;
+    studentId: string;
     studentName: string;
     time: Date;
   }[]>([]);
 
   const selectedCourseData = courses.find(c => c.id === selectedCourse);
-  const totalStudents = selectedCourseData?.students ?? 0;
-  const presentCount = presentStudents.length;
+  const totalStudents = students.length;
+  const presentCount = attendanceRecords.filter(r => r.status === "present" || r.status === "late").length;
   const absentCount = totalStudents - presentCount;
   const attendanceRate = totalStudents > 0 ? Math.round((presentCount / totalStudents) * 100) : 0;
+
+  // Fetch courses
+  useEffect(() => {
+    async function fetchCourses() {
+      try {
+        setLoading(true);
+        const supabase = createSupabaseBrowserClient();
+        
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw new Error("Not authenticated");
+        }
+
+        // Fetch courses where user is a collaborator
+        const { data: collaborators, error: collaboratorsError } = await supabase
+          .from("course_collaborators")
+          .select("course_id")
+          .eq("profile_id", user.id);
+
+        if (collaboratorsError) throw collaboratorsError;
+
+        if (collaborators && collaborators.length > 0) {
+          const courseIds = collaborators.map(c => c.course_id);
+
+          // Fetch course details
+          const { data: coursesData, error: coursesError } = await supabase
+            .from("courses")
+            .select("id, code, name")
+            .in("id", courseIds)
+            .eq("status", "active")
+            .order("code", { ascending: true });
+
+          if (coursesError) throw coursesError;
+
+          if (coursesData && coursesData.length > 0) {
+            // Get student counts for each course
+            const coursesWithStudents = await Promise.all(
+              coursesData.map(async (course) => {
+                const { data: enrollments, error: enrollmentsError } = await supabase
+                  .from("course_enrollments")
+                  .select("id")
+                  .eq("course_id", course.id)
+                  .eq("status", "active");
+
+                if (enrollmentsError) throw enrollmentsError;
+
+                return {
+                  id: course.id,
+                  code: course.code,
+                  name: course.name,
+                  students: enrollments?.length || 0,
+                };
+              })
+            );
+
+            setCourses(coursesWithStudents);
+            if (coursesWithStudents.length > 0 && !selectedCourse) {
+              setSelectedCourse(coursesWithStudents[0].id);
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching courses:", error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    void fetchCourses();
+  }, []);
+
+  // Fetch students when course changes
+  useEffect(() => {
+    async function fetchStudents() {
+      if (!selectedCourse) return;
+
+      try {
+        const supabase = createSupabaseBrowserClient();
+
+        // Fetch enrolled students
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from("course_enrollments")
+          .select("student_id")
+          .eq("course_id", selectedCourse)
+          .eq("status", "active");
+
+        if (enrollmentsError) throw enrollmentsError;
+
+        if (enrollments && enrollments.length > 0) {
+          // Fetch student profiles separately
+          const studentIds = enrollments.map(e => e.student_id);
+          
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, full_name, student_id")
+            .in("id", studentIds);
+
+          if (profilesError) throw profilesError;
+
+          if (profiles) {
+            const studentsList: Student[] = profiles.map((profile) => {
+              const name = profile.full_name || "Unknown";
+              const nameParts = name.split(" ");
+              const avatar = nameParts.length >= 2
+                ? `${nameParts[0][0]}${nameParts[1][0]}`.toUpperCase()
+                : nameParts[0]?.[0]?.toUpperCase() || "U";
+
+              return {
+                id: profile.id,
+                name: profile.full_name || "Unknown",
+                avatar,
+                studentId: profile.student_id || `STU-${profile.id.substring(0, 8).toUpperCase()}`,
+              };
+            });
+
+            setStudents(studentsList);
+          }
+        } else {
+          setStudents([]);
+        }
+      } catch (error) {
+        console.error("Error fetching students:", error);
+      }
+    }
+
+    void fetchStudents();
+  }, [selectedCourse]);
+
+  // Check for active session and fetch attendance records
+  useEffect(() => {
+    async function fetchActiveSession() {
+      if (!selectedCourse) return;
+
+      try {
+        const supabase = createSupabaseBrowserClient();
+
+        // Check for active session
+        const { data: activeSession, error: sessionError } = await supabase
+          .from("attendance_sessions")
+          .select("*")
+          .eq("course_id", selectedCourse)
+          .eq("status", "active")
+          .order("start_time", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (sessionError) throw sessionError;
+
+        if (activeSession) {
+          setCurrentSession(activeSession);
+          setIsSessionActive(true);
+          setSessionStartTime(new Date(activeSession.start_time));
+          
+          // Calculate time remaining
+          const startTime = new Date(activeSession.start_time).getTime();
+          const timeLimitMs = activeSession.time_limit_minutes * 60 * 1000;
+          const endTime = startTime + timeLimitMs;
+          const now = Date.now();
+          const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
+          setTimeRemaining(remaining);
+
+          // Set QR code URL
+          const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+          const checkInUrl = `${baseUrl}/attendance/check-in/${activeSession.token}`;
+          setQrCode(checkInUrl);
+
+          // Fetch attendance records for this session
+          await fetchAttendanceRecords(activeSession.id);
+        } else {
+          setIsSessionActive(false);
+          setCurrentSession(null);
+          setAttendanceRecords([]);
+          setRecentCheckIns([]);
+        }
+      } catch (error) {
+        console.error("Error fetching active session:", error);
+      }
+    }
+
+    void fetchActiveSession();
+  }, [selectedCourse]);
+
+  // Fetch attendance records
+  async function fetchAttendanceRecords(sessionId: string) {
+    try {
+      const supabase = createSupabaseBrowserClient();
+
+      const { data: records, error: recordsError } = await supabase
+        .from("attendance_records")
+        .select("*")
+        .eq("session_id", sessionId)
+        .order("check_in_time", { ascending: false });
+
+      if (recordsError) throw recordsError;
+
+      if (records) {
+        setAttendanceRecords(records);
+
+        // Update recent check-ins
+        const recent = records
+          .slice(0, 10)
+          .map(record => ({
+            studentId: record.student_id,
+            studentName: record.student_name || "Unknown",
+            time: new Date(record.check_in_time),
+          }));
+        setRecentCheckIns(recent);
+      }
+    } catch (error) {
+      console.error("Error fetching attendance records:", error);
+    }
+  }
+
+  // Set up real-time subscription for attendance records
+  useEffect(() => {
+    if (!currentSession?.id) return;
+
+    const supabase = createSupabaseBrowserClient();
+
+    const channel = supabase
+      .channel(`attendance-${currentSession.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "attendance_records",
+          filter: `session_id=eq.${currentSession.id}`,
+        },
+        () => {
+          // Refresh attendance records when a new one is added
+          void fetchAttendanceRecords(currentSession.id);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [currentSession?.id]);
 
   // Calculate total time in milliseconds
   const getTotalTimeInMs = () => {
@@ -88,64 +351,135 @@ export default function AttendancePage() {
   };
 
   // Generate QR code with unique URL
-  const generateQRCode = () => {
-    // Generate unique session token
+  const generateSessionToken = () => {
     const timestamp = Date.now();
     const randomPart = Math.random().toString(36).substring(2, 15);
-    const sessionToken = `${selectedCourse}-${timestamp}-${randomPart}`;
-    
-    // Create the full URL that students will scan
-    const baseUrl = typeof window !== 'undefined' 
-      ? window.location.origin 
-      : 'https://yourdomain.com';
-    const checkInUrl = `${baseUrl}/attendance/check-in/${sessionToken}`;
-    
-    // Store the URL in QR code (not JSON, just the URL)
-    setQrCode(checkInUrl);
-    
-    const totalTimeMs = getTotalTimeInMs();
-    
-    // In real app, save session data to database with this token
-    console.log("Session created:", {
-      token: sessionToken,
-      courseId: selectedCourse,
-      courseName: selectedCourseData?.name,
-      url: checkInUrl,
-      expiresAt: new Date(Date.now() + totalTimeMs),
-      duration: `${customTimeLimit ?? timeLimit} ${timeLimitUnit}`,
-    });
-    
-    return sessionToken;
+    return `${selectedCourse}-${timestamp}-${randomPart}`;
   };
 
   // Start attendance session
-  const startSession = () => {
-    const sessionId = generateQRCode();
-    setIsSessionActive(true);
-    setSessionStartTime(new Date());
-    const totalTimeMs = getTotalTimeInMs();
-    setTimeRemaining(Math.floor(totalTimeMs / 1000)); // Convert to seconds
-    setPresentStudents([]);
-    setRecentCheckIns([]);
-    setShowQRModal(true);
-    console.log("Started attendance session:", sessionId);
+  const startSession = async () => {
+    if (!selectedCourse) return;
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+      
+      // Get current user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error("Not authenticated");
+      }
+
+      // Generate session token
+      const sessionToken = generateSessionToken();
+      
+      // Calculate time limit in minutes
+      const limit = customTimeLimit ? parseInt(customTimeLimit) : timeLimit;
+      let timeLimitMinutes = limit;
+      if (timeLimitUnit === "hours") {
+        timeLimitMinutes = limit * 60;
+      } else if (timeLimitUnit === "days") {
+        timeLimitMinutes = limit * 24 * 60;
+      }
+
+      // Create session in database
+      const { data: session, error: sessionError } = await supabase
+        .from("attendance_sessions")
+        .insert({
+          course_id: selectedCourse,
+          token: sessionToken,
+          session_date: new Date().toISOString().split('T')[0],
+          start_time: new Date().toISOString(),
+          time_limit_minutes: timeLimitMinutes,
+          status: "active",
+          created_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (sessionError) throw sessionError;
+
+      if (session) {
+        setCurrentSession(session);
+        setIsSessionActive(true);
+        setSessionStartTime(new Date(session.start_time));
+        
+        const totalTimeMs = timeLimitMinutes * 60 * 1000;
+        setTimeRemaining(Math.floor(totalTimeMs / 1000));
+        
+        // Set QR code URL
+        const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+        const checkInUrl = `${baseUrl}/attendance/check-in/${sessionToken}`;
+        setQrCode(checkInUrl);
+        
+        setAttendanceRecords([]);
+        setRecentCheckIns([]);
+        setShowQRModal(true);
+      }
+    } catch (error) {
+      console.error("Error starting session:", error);
+      alert("Failed to start attendance session. Please try again.");
+    }
   };
 
   // Stop attendance session
-  const stopSession = () => {
-    setIsSessionActive(false);
-    setSessionStartTime(null);
-    setQrCode(null);
-    setTimeRemaining(0);
-    setShowQRModal(false);
-    console.log("Stopped attendance session. Final attendance:", presentStudents);
+  const stopSession = async () => {
+    if (!currentSession) return;
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+
+      // Update session status in database
+      const { error: updateError } = await supabase
+        .from("attendance_sessions")
+        .update({
+          status: "ended",
+          end_time: new Date().toISOString(),
+        })
+        .eq("id", currentSession.id);
+
+      if (updateError) throw updateError;
+
+      setIsSessionActive(false);
+      setCurrentSession(null);
+      setSessionStartTime(null);
+      setQrCode(null);
+      setTimeRemaining(0);
+      setShowQRModal(false);
+    } catch (error) {
+      console.error("Error stopping session:", error);
+      alert("Failed to stop attendance session. Please try again.");
+    }
   };
 
   // Regenerate QR code (for security)
-  const regenerateQRCode = () => {
-    if (isSessionActive) {
-      generateQRCode();
-      console.log("QR code regenerated for security");
+  const regenerateQRCode = async () => {
+    if (!isSessionActive || !currentSession || !selectedCourse) return;
+
+    try {
+      const supabase = createSupabaseBrowserClient();
+
+      // Generate new token
+      const newToken = generateSessionToken();
+
+      // Update session token in database
+      const { error: updateError } = await supabase
+        .from("attendance_sessions")
+        .update({ token: newToken })
+        .eq("id", currentSession.id);
+
+      if (updateError) throw updateError;
+
+      // Update QR code URL
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+      const checkInUrl = `${baseUrl}/attendance/check-in/${newToken}`;
+      setQrCode(checkInUrl);
+
+      // Update current session
+      setCurrentSession({ ...currentSession, token: newToken });
+    } catch (error) {
+      console.error("Error regenerating QR code:", error);
+      alert("Failed to regenerate QR code. Please try again.");
     }
   };
 
@@ -166,20 +500,6 @@ export default function AttendancePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSessionActive, timeRemaining]);
 
-  // Simulate student check-in (in real app, this comes from API)
-  const simulateCheckIn = () => {
-    if (!isSessionActive) return;
-    
-    const availableStudents = studentsData.filter(s => !presentStudents.includes(s.id));
-    if (availableStudents.length === 0) return;
-
-    const randomStudent = availableStudents[Math.floor(Math.random() * availableStudents.length)];
-    setPresentStudents(prev => [...prev, randomStudent.id]);
-    setRecentCheckIns(prev => [
-      { studentId: randomStudent.id, studentName: randomStudent.name, time: new Date() },
-      ...prev.slice(0, 9), // Keep last 10
-    ]);
-  };
 
   // Format time remaining
   const formatTime = (seconds: number) => {
@@ -418,12 +738,19 @@ export default function AttendancePage() {
     });
   };
 
-  const filteredStudents = studentsData.filter((student) =>
-    student.name.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredStudents = students.filter((student) =>
+    student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    student.studentId.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const presentStudentsList = filteredStudents.filter(s => presentStudents.includes(s.id));
-  const absentStudentsList = filteredStudents.filter(s => !presentStudents.includes(s.id));
+  const presentStudentIds = new Set(
+    attendanceRecords
+      .filter(r => r.status === "present" || r.status === "late")
+      .map(r => r.student_id)
+  );
+
+  const presentStudentsList = filteredStudents.filter(s => presentStudentIds.has(s.id));
+  const absentStudentsList = filteredStudents.filter(s => !presentStudentIds.has(s.id));
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
@@ -459,17 +786,28 @@ export default function AttendancePage() {
                 </p>
               </div>
               <div className="flex items-center gap-3">
-                <select
-                  value={selectedCourse}
-                  onChange={(e) => setSelectedCourse(e.target.value)}
-                  className="h-12 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-neutral-900 backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5 dark:text-white [&>option]:bg-white [&>option]:text-neutral-900 dark:[&>option]:bg-neutral-800 dark:[&>option]:text-white"
-                >
-                  {courses.map((course) => (
-                    <option key={course.id} value={course.id}>
-                      {course.code} - {course.name}
-                    </option>
-                  ))}
-                </select>
+                {loading ? (
+                  <div className="flex h-12 items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold backdrop-blur-sm dark:border-white/10 dark:bg-white/5">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Loading courses...</span>
+                  </div>
+                ) : courses.length > 0 ? (
+                  <select
+                    value={selectedCourse}
+                    onChange={(e) => setSelectedCourse(e.target.value)}
+                    className="h-12 rounded-xl border border-white/20 bg-white/10 px-4 text-sm font-semibold text-neutral-900 backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5 dark:text-white [&>option]:bg-white [&>option]:text-neutral-900 dark:[&>option]:bg-neutral-800 dark:[&>option]:text-white"
+                  >
+                    {courses.map((course) => (
+                      <option key={course.id} value={course.id}>
+                        {course.code} - {course.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="text-sm text-neutral-600 dark:text-neutral-400">
+                    No courses available
+                  </div>
+                )}
               </div>
             </div>
           </motion.div>
@@ -620,13 +958,6 @@ export default function AttendancePage() {
                     >
                       <RefreshCw className="h-5 w-5" />
                       Regenerate
-                    </button>
-                    <button
-                      onClick={simulateCheckIn}
-                      className="flex h-12 items-center gap-2 rounded-xl border border-green-600/50 bg-green-600/10 px-6 text-sm font-semibold text-green-600 backdrop-blur-sm transition hover:bg-green-600/20 dark:text-green-400"
-                    >
-                      <Zap className="h-5 w-5" />
-                      Simulate Check-in
                     </button>
                     <button
                       onClick={stopSession}

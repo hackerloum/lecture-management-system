@@ -19,75 +19,362 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-// Mock course data
+// Course data interface
 interface CourseData {
-  id: number;
+  id: string;
   code: string;
   name: string;
   semester: string;
+  year: number;
   color: string;
-  description: string;
+  description: string | null;
   students: number;
   avgGrade: number;
   progress: number;
   completedAssignments: number;
   assignments: number;
   schedule: string;
-  room: string;
+  room: string | null;
   nextClass: string;
-  syllabus?: string;
-  announcements?: { id: number; title: string; date: string; content: string }[];
-  upcomingDeadlines: { id: number; title: string; date: string; type?: string }[];
-  recentMaterials: { id: number; title: string; date: string; type?: string }[];
+  syllabus?: string | null;
+  announcements: { id: string; title: string; date: string; content: string }[];
+  upcomingDeadlines: { id: string; title: string; date: string; type?: string }[];
+  recentMaterials: { id: string; title: string; date: string; type?: string }[];
 }
 
-const coursesData: Record<string, CourseData> = {
-  "1": {
-    id: 1,
-    code: "CS 101",
-    name: "Introduction to Computer Science",
-    semester: "Spring 2025",
-    students: 45,
-    schedule: "Mon/Wed 10:00 AM - 11:30 AM",
-    room: "Engineering 201",
-    progress: 68,
-    nextClass: "Monday, 10:00 AM",
-    assignments: 12,
-    completedAssignments: 8,
-    avgGrade: 88,
-    color: "from-blue-500 to-cyan-500",
-    description: "An introductory course covering fundamental concepts of computer science including programming basics, algorithms, and problem-solving techniques.",
-    syllabus: "Week 1-4: Programming Basics, Week 5-8: Data Structures, Week 9-12: Algorithms, Week 13-16: Projects",
-    announcements: [
-      { id: 1, title: "Midterm Exam Scheduled", date: "2 days ago", content: "The midterm exam is scheduled for next Wednesday." },
-      { id: 2, title: "New Assignment Posted", date: "5 days ago", content: "Assignment 3 is now available in the Assignments section." },
-    ],
-    upcomingDeadlines: [
-      { id: 1, title: "Assignment 3: Sorting Algorithms", date: "Nov 15, 2025", type: "assignment" },
-      { id: 2, title: "Midterm Exam", date: "Nov 18, 2025", type: "exam" },
-      { id: 3, title: "Project Proposal", date: "Nov 22, 2025", type: "project" },
-    ],
-    recentMaterials: [
-      { id: 1, title: "Lecture 10: Binary Search Trees", type: "slides", date: "Yesterday" },
-      { id: 2, title: "Week 5 Tutorial Video", type: "video", date: "3 days ago" },
-      { id: 3, title: "Reading: Chapter 7", type: "document", date: "5 days ago" },
-    ],
-  },
-  // Add other courses as needed
-};
+const colorMap = [
+  "from-blue-500 to-cyan-500",
+  "from-purple-500 to-pink-500",
+  "from-green-500 to-emerald-500",
+  "from-orange-500 to-red-500",
+  "from-indigo-500 to-purple-500",
+];
+
+const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 export default function CourseDetailsPage() {
   const prefersReducedMotion = useReducedMotion();
   const params = useParams();
   const router = useRouter();
   const courseId = params.id as string;
-  const course = coursesData[courseId] ?? coursesData["1"];
+  
+  const [course, setCourse] = useState<CourseData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchCourseData() {
+      try {
+        setLoading(true);
+        const supabase = createSupabaseBrowserClient();
+
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw new Error("Not authenticated");
+        }
+
+        // Fetch course data
+        const { data: courseData, error: courseError } = await supabase
+          .from("courses")
+          .select("*")
+          .eq("id", courseId)
+          .single();
+
+        if (courseError || !courseData) {
+          throw new Error("Course not found");
+        }
+
+        // Check if user has access to this course
+        const { data: collaborator } = await supabase
+          .from("course_collaborators")
+          .select("id")
+          .eq("course_id", courseId)
+          .eq("profile_id", user.id)
+          .single();
+
+        if (!collaborator) {
+          // Check if user is admin
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single();
+
+          if ((profile as any)?.role !== "admin") {
+            throw new Error("You don't have access to this course");
+          }
+        }
+
+        // Fetch student count
+        const { data: enrollments } = await supabase
+          .from("course_enrollments")
+          .select("id")
+          .eq("course_id", courseId)
+          .eq("status", "active");
+
+        const students = (enrollments as any)?.length || 0;
+
+        // Fetch assignments
+        const { data: assignments } = await supabase
+          .from("assignments")
+          .select("id, title, due_date, type, status")
+          .eq("course_id", courseId);
+
+        const assignmentsList = (assignments as any) || [];
+        const totalAssignments = assignmentsList.length;
+        const completedAssignments = assignmentsList.filter((a: any) => a.status === "closed").length;
+
+        // Fetch upcoming deadlines (next 30 days)
+        const now = new Date();
+        const thirtyDaysFromNow = new Date();
+        thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+
+        const upcomingDeadlines = assignmentsList
+          .filter((a: any) => a.due_date && a.status === "published")
+          .map((a: any) => {
+            const dueDate = new Date(a.due_date);
+            if (dueDate >= now && dueDate <= thirtyDaysFromNow) {
+              return {
+                id: a.id,
+                title: a.title,
+                date: dueDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
+                type: a.type || "assignment",
+              };
+            }
+            return null;
+          })
+          .filter(Boolean)
+          .slice(0, 5) as { id: string; title: string; date: string; type?: string }[];
+
+        // Fetch average grade from student progress
+        const { data: progressData } = await supabase
+          .from("student_progress")
+          .select("current_grade, assignments_completed, assignments_total")
+          .eq("course_id", courseId)
+          .not("current_grade", "is", null);
+
+        const progressList = (progressData as any) || [];
+        const avgGrade = progressList.length > 0
+          ? Math.round(
+              progressList.reduce((sum: number, p: any) => sum + (p.current_grade || 0), 0) / progressList.length
+            )
+          : 0;
+
+        // Calculate progress (average of all students' progress)
+        const progress = progressList.length > 0
+          ? Math.round(
+              progressList.reduce((sum: number, p: any) => {
+                const studentProgress = p.assignments_total > 0
+                  ? (p.assignments_completed / p.assignments_total) * 100
+                  : 0;
+                return sum + studentProgress;
+              }, 0) / progressList.length
+            )
+          : 0;
+
+        // Fetch schedule
+        const { data: schedules } = await supabase
+          .from("schedules")
+          .select("day_of_week, start_time, end_time, room")
+          .eq("course_id", courseId)
+          .eq("recurring", true)
+          .order("day_of_week", { ascending: true })
+          .order("start_time", { ascending: true });
+
+        const schedulesList = (schedules as any) || [];
+        let scheduleText = "Not scheduled";
+        let nextClassText = "No upcoming classes";
+        const room = (courseData as any).room || schedulesList[0]?.room || "TBD";
+
+        if (schedulesList.length > 0) {
+          const scheduleParts = schedulesList.map((s: any) => {
+            const dayName = dayNames[s.day_of_week];
+            const startTime = new Date(`2000-01-01T${s.start_time}`);
+            const endTime = new Date(`2000-01-01T${s.end_time}`);
+            return `${dayName} ${startTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} - ${endTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+          });
+          scheduleText = scheduleParts.join(", ");
+
+          // Find next class
+          const today = new Date();
+          const currentDay = today.getDay();
+          const currentTime = today.getHours() * 60 + today.getMinutes();
+
+          const upcomingSchedules = schedulesList
+            .map((s: any) => {
+              const startMinutes = new Date(`2000-01-01T${s.start_time}`).getHours() * 60 +
+                new Date(`2000-01-01T${s.start_time}`).getMinutes();
+              return { ...s, startMinutes };
+            })
+            .filter((s: any) => {
+              if (s.day_of_week > currentDay) return true;
+              if (s.day_of_week === currentDay && s.startMinutes > currentTime) return true;
+              return false;
+            })
+            .sort((a: any, b: any) => {
+              if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week;
+              return a.startMinutes - b.startMinutes;
+            });
+
+          if (upcomingSchedules.length > 0) {
+            const next = upcomingSchedules[0];
+            const dayName = dayNames[next.day_of_week];
+            const startTime = new Date(`2000-01-01T${next.start_time}`);
+            nextClassText = `${dayName}, ${startTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+          } else {
+            // Next week
+            const nextWeekSchedule = schedulesList[0];
+            const dayName = dayNames[nextWeekSchedule.day_of_week];
+            const startTime = new Date(`2000-01-01T${nextWeekSchedule.start_time}`);
+            nextClassText = `Next ${dayName}, ${startTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+          }
+        }
+
+        // Fetch announcements
+        const { data: announcements } = await supabase
+          .from("announcements")
+          .select("id, title, content, created_at")
+          .eq("course_id", courseId)
+          .order("created_at", { ascending: false })
+          .limit(5);
+
+        const formattedAnnouncements = ((announcements as any) || []).map((a: any) => {
+          const createdDate = new Date(a.created_at);
+          const now = new Date();
+          const diffMs = now.getTime() - createdDate.getTime();
+          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          
+          let dateText = "";
+          if (diffDays === 0) dateText = "Today";
+          else if (diffDays === 1) dateText = "Yesterday";
+          else if (diffDays < 7) dateText = `${diffDays} days ago`;
+          else dateText = createdDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+          return {
+            id: a.id,
+            title: a.title,
+            date: dateText,
+            content: a.content,
+          };
+        });
+
+        // Fetch recent materials
+        const { data: materials } = await supabase
+          .from("course_materials")
+          .select("id, title, type, created_at")
+          .eq("course_id", courseId)
+          .order("created_at", { ascending: false })
+          .limit(5);
+
+        const formattedMaterials = ((materials as any) || []).map((m: any) => {
+          const createdDate = new Date(m.created_at);
+          const now = new Date();
+          const diffMs = now.getTime() - createdDate.getTime();
+          const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+          
+          let dateText = "";
+          if (diffDays === 0) dateText = "Today";
+          else if (diffDays === 1) dateText = "Yesterday";
+          else if (diffDays < 7) dateText = `${diffDays} days ago`;
+          else dateText = createdDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+          return {
+            id: m.id,
+            title: m.title,
+            date: dateText,
+            type: m.type,
+          };
+        });
+
+        // Format semester string
+        const semesterText = `${(courseData as any).semester} ${(courseData as any).year}`;
+
+        // Get color (use course color or default)
+        const colorIndex = (courseData as any).color ? parseInt((courseData as any).color) % colorMap.length : 0;
+        const color = colorMap[colorIndex] || colorMap[0];
+
+        setCourse({
+          id: (courseData as any).id,
+          code: (courseData as any).code,
+          name: (courseData as any).name,
+          semester: semesterText,
+          year: (courseData as any).year,
+          color,
+          description: (courseData as any).description,
+          students,
+          avgGrade,
+          progress,
+          completedAssignments,
+          assignments: totalAssignments,
+          schedule: scheduleText,
+          room,
+          nextClass: nextClassText,
+          syllabus: (courseData as any).syllabus,
+          announcements: formattedAnnouncements,
+          upcomingDeadlines,
+          recentMaterials: formattedMaterials,
+        });
+
+        setLoading(false);
+      } catch (err) {
+        console.error("Course data fetch error:", err);
+        setError(err instanceof Error ? err.message : "Failed to fetch course data");
+        setLoading(false);
+      }
+    }
+
+    if (courseId) {
+      void fetchCourseData();
+    }
+  }, [courseId]);
 
   const [_activeTab, _setActiveTab] = useState<"overview" | "materials" | "announcements" | "students">("overview");
+
+  if (loading) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
+        <DashboardNavigation />
+        <main className="relative z-10 px-4 py-16 pt-28 sm:px-6 lg:py-24">
+          <div className="mx-auto max-w-7xl">
+            <div className="text-center py-16">
+              <div className="text-lg font-semibold text-neutral-900 dark:text-white">Loading course...</div>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (error || !course) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
+        <DashboardNavigation />
+        <main className="relative z-10 px-4 py-16 pt-28 sm:px-6 lg:py-24">
+          <div className="mx-auto max-w-7xl">
+            <div className="text-center py-16">
+              <div className="mb-4 text-6xl">⚠️</div>
+              <div className="text-lg font-semibold text-neutral-900 dark:text-white">
+                {error || "Course not found"}
+              </div>
+              <Link
+                href="/dashboard/courses"
+                className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-purple-600 transition hover:text-purple-700 dark:text-purple-400"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Courses
+              </Link>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
@@ -132,9 +419,11 @@ export default function CourseDetailsPage() {
                 <h1 className="mb-2 text-4xl font-bold text-neutral-900 dark:text-white">
                   {course.name}
                 </h1>
-                <p className="text-lg text-neutral-600 dark:text-neutral-400">
-                  {course.description}
-                </p>
+                {course.description && (
+                  <p className="text-lg text-neutral-600 dark:text-neutral-400">
+                    {course.description}
+                  </p>
+                )}
               </div>
               
               <div className="flex flex-wrap gap-3">
@@ -225,15 +514,19 @@ export default function CourseDetailsPage() {
             >
               <h3 className="mb-4 text-lg font-bold text-neutral-900 dark:text-white">Upcoming Deadlines</h3>
               <div className="space-y-3">
-                {course.upcomingDeadlines.map((deadline) => (
-                  <div key={deadline.id} className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                    <CheckCircle className="mt-1 h-5 w-5 text-blue-600 dark:text-blue-400" />
-                    <div className="flex-1">
-                      <div className="font-semibold text-neutral-900 dark:text-white">{deadline.title}</div>
-                      <div className="text-sm text-neutral-600 dark:text-neutral-400">{deadline.date}</div>
+                {course.upcomingDeadlines.length > 0 ? (
+                  course.upcomingDeadlines.map((deadline) => (
+                    <div key={deadline.id} className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                      <CheckCircle className="mt-1 h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      <div className="flex-1">
+                        <div className="font-semibold text-neutral-900 dark:text-white">{deadline.title}</div>
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400">{deadline.date}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <div className="text-sm text-neutral-600 dark:text-neutral-400">No upcoming deadlines</div>
+                )}
               </div>
             </motion.div>
 
@@ -245,15 +538,19 @@ export default function CourseDetailsPage() {
             >
               <h3 className="mb-4 text-lg font-bold text-neutral-900 dark:text-white">Recent Materials</h3>
               <div className="space-y-3">
-                {course.recentMaterials.map((material) => (
-                  <div key={material.id} className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                    <FileText className="mt-1 h-5 w-5 text-green-600 dark:text-green-400" />
-                    <div className="flex-1">
-                      <div className="font-semibold text-neutral-900 dark:text-white">{material.title}</div>
-                      <div className="text-sm text-neutral-600 dark:text-neutral-400">{material.date}</div>
+                {course.recentMaterials.length > 0 ? (
+                  course.recentMaterials.map((material) => (
+                    <div key={material.id} className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                      <FileText className="mt-1 h-5 w-5 text-green-600 dark:text-green-400" />
+                      <div className="flex-1">
+                        <div className="font-semibold text-neutral-900 dark:text-white">{material.title}</div>
+                        <div className="text-sm text-neutral-600 dark:text-neutral-400">{material.date}</div>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <div className="text-sm text-neutral-600 dark:text-neutral-400">No materials available</div>
+                )}
               </div>
             </motion.div>
           </div>

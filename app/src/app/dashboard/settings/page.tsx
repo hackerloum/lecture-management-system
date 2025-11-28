@@ -15,24 +15,64 @@ import {
   Camera,
   Edit,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
+import { useUserProfile } from "@/lib/hooks/useUserProfile";
+import { Loader2 } from "lucide-react";
 
 export default function SettingsPage() {
   const prefersReducedMotion = useReducedMotion();
   const [activeTab, setActiveTab] = useState<"profile" | "preferences" | "notifications" | "security" | "privacy">("profile");
+  const { profile: profileData, loading: profileLoading, getAvatarInitials } = useUserProfile();
 
-  // Profile state
+  // Profile state - will be initialized from fetched data
   const [profile, setProfile] = useState({
-    firstName: "Sarah",
-    lastName: "Johnson",
-    email: "sarah.johnson@university.edu",
-    phone: "+1 (555) 123-4567",
-    title: "Professor",
-    department: "Computer Science",
-    bio: "Experienced educator with a passion for computer science and software engineering.",
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    title: "",
+    department: "",
+    bio: "",
   });
+
+  // Initialize profile from fetched data
+  useEffect(() => {
+    if (profileData) {
+      // Split full_name into first and last name
+      const nameParts = profileData.full_name.split(" ").filter(Boolean);
+      const titleMatch = nameParts[0]?.match(/^(Dr|Prof|Professor|Mr|Mrs|Ms)\.?$/i);
+      
+      let firstName = "";
+      let lastName = "";
+      let title = "";
+      
+      if (titleMatch) {
+        title = nameParts[0];
+        firstName = nameParts[1] || "";
+        lastName = nameParts.slice(2).join(" ") || "";
+      } else {
+        firstName = nameParts[0] || "";
+        lastName = nameParts.slice(1).join(" ") || "";
+      }
+
+      // Determine title from role if not in name
+      if (!title && profileData.role === "lecturer") {
+        title = "Professor";
+      }
+
+      setProfile({
+        firstName: firstName || "",
+        lastName: lastName || "",
+        email: profileData.email || "",
+        phone: profileData.phone || "",
+        title: title || "",
+        department: profileData.department || "",
+        bio: profileData.bio || "",
+      });
+    }
+  }, [profileData]);
 
   // Preferences state
   const [preferences, setPreferences] = useState({
@@ -75,9 +115,38 @@ export default function SettingsPage() {
     { id: "privacy" as const, label: "Privacy", icon: Lock },
   ];
 
-  const handleSave = () => {
-    // TODO: Implement save functionality
-    console.log("Saving settings...");
+  const handleSave = async () => {
+    if (!profileData) return;
+    
+    try {
+      const supabase = (await import("@/lib/supabase/client")).createSupabaseBrowserClient();
+      
+      // Combine firstName and lastName back into full_name
+      const fullName = [profile.title, profile.firstName, profile.lastName]
+        .filter(Boolean)
+        .join(" ");
+      
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: fullName,
+          phone: profile.phone || null,
+          department: profile.department || null,
+          bio: profile.bio || null,
+        })
+        .eq("id", profileData.id);
+      
+      if (error) {
+        console.error("Error saving profile:", error);
+        alert("Failed to save profile. Please try again.");
+        return;
+      }
+      
+      alert("Profile saved successfully!");
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      alert("Failed to save profile. Please try again.");
+    }
   };
 
   return (
@@ -164,40 +233,63 @@ export default function SettingsPage() {
                       </h2>
 
                       {/* Avatar Section */}
-                      <div className="mb-8 flex items-center gap-6">
-                        <div className="relative">
-                          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-blue-600 text-2xl font-bold text-white">
-                            {profile.firstName[0]}
-                            {profile.lastName[0]}
+                      {profileLoading ? (
+                        <div className="mb-8 flex items-center gap-6">
+                          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-blue-600">
+                            <Loader2 className="h-8 w-8 animate-spin text-white" />
                           </div>
-                          <button className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-purple-600 text-white transition hover:bg-purple-700 dark:border-neutral-800">
-                            <Camera className="h-4 w-4" />
-                          </button>
+                          <div>
+                            <div className="h-6 w-32 animate-pulse rounded bg-neutral-300 dark:bg-neutral-700 mb-2" />
+                            <div className="h-4 w-48 animate-pulse rounded bg-neutral-300 dark:bg-neutral-700" />
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
-                            {profile.firstName} {profile.lastName}
-                          </h3>
-                          <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                            {profile.title} • {profile.department}
-                          </p>
+                      ) : (
+                        <div className="mb-8 flex items-center gap-6">
+                          <div className="relative">
+                            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-gradient-to-br from-purple-600 to-blue-600 text-2xl font-bold text-white">
+                              {profileData ? getAvatarInitials(profileData.full_name) : "U"}
+                            </div>
+                            <button className="absolute bottom-0 right-0 flex h-8 w-8 items-center justify-center rounded-full border-2 border-white bg-purple-600 text-white transition hover:bg-purple-700 dark:border-neutral-800">
+                              <Camera className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div>
+                            <h3 className="text-lg font-semibold text-neutral-900 dark:text-white">
+                              {profileData?.full_name || "User"}
+                            </h3>
+                            <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                              {profile.title && profile.department 
+                                ? `${profile.title} • ${profile.department}`
+                                : profile.title || profile.department || profileData?.role || ""}
+                            </p>
+                          </div>
                         </div>
-                      </div>
+                      )}
 
                       {/* Form Fields */}
-                      <div className="grid gap-6 md:grid-cols-2">
-                        <div>
-                          <label htmlFor="firstName" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
-                            First Name
-                          </label>
-                          <input
-                            id="firstName"
-                            type="text"
-                            value={profile.firstName}
-                            onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
-                            className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-sm backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5"
-                          />
+                      {profileLoading ? (
+                        <div className="grid gap-6 md:grid-cols-2">
+                          {[...Array(6)].map((_, i) => (
+                            <div key={i}>
+                              <div className="mb-2 h-4 w-24 animate-pulse rounded bg-neutral-300 dark:bg-neutral-700" />
+                              <div className="h-12 w-full animate-pulse rounded-xl bg-neutral-300 dark:bg-neutral-700" />
+                            </div>
+                          ))}
                         </div>
+                      ) : (
+                        <div className="grid gap-6 md:grid-cols-2">
+                          <div>
+                            <label htmlFor="firstName" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
+                              First Name
+                            </label>
+                            <input
+                              id="firstName"
+                              type="text"
+                              value={profile.firstName}
+                              onChange={(e) => setProfile({ ...profile, firstName: e.target.value })}
+                              className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-sm backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5"
+                            />
+                          </div>
                         <div>
                           <label htmlFor="lastName" className="mb-2 block text-sm font-semibold text-neutral-700 dark:text-neutral-300">
                             Last Name
@@ -218,8 +310,9 @@ export default function SettingsPage() {
                             id="email"
                             type="email"
                             value={profile.email}
-                            onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-                            className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-sm backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5"
+                            disabled
+                            className="h-12 w-full rounded-xl border border-white/20 bg-white/10 px-4 text-sm backdrop-blur-sm transition opacity-60 cursor-not-allowed dark:border-white/10 dark:bg-white/5"
+                            title="Email cannot be changed"
                           />
                         </div>
                         <div>
@@ -271,6 +364,7 @@ export default function SettingsPage() {
                           className="w-full rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm backdrop-blur-sm transition focus:border-purple-600 focus:outline-none focus:ring-2 focus:ring-purple-600/20 dark:border-white/10 dark:bg-white/5"
                         />
                       </div>
+                      )}
                     </div>
                   </div>
                 )}

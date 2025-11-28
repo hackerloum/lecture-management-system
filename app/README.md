@@ -2,6 +2,26 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+### Environment Setup
+
+This project uses [Supabase](https://supabase.com) as the backend. To set up the environment:
+
+1. Copy the example environment file:
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. Update `.env.local` with your Supabase credentials:
+   - `NEXT_PUBLIC_SUPABASE_URL`: Your Supabase project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: Your Supabase anonymous/public key
+   - `SUPABASE_URL`: Same as NEXT_PUBLIC_SUPABASE_URL
+   - `SUPABASE_ANON_KEY`: Same as NEXT_PUBLIC_SUPABASE_ANON_KEY
+   - `SUPABASE_SERVICE_ROLE_KEY`: (Optional) Your service role key for admin operations
+
+The environment variables are automatically validated using Zod schemas defined in `src/lib/env.ts`.
+
+### Running the Development Server
+
 First, run the development server:
 
 ```bash

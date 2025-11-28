@@ -19,184 +19,14 @@ import {
   Video,
   Plus,
   MapPin,
+  Loader2,
   TrendingDown as Minus,
 } from "lucide-react";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
-
-// Mock data - Replace with real API calls
-const dashboardStats = [
-  {
-    icon: Users,
-    label: "Total Students",
-    value: "143",
-    change: "+12",
-    changePercent: "+9.2%",
-    trend: "up" as const,
-    color: "from-blue-500 to-cyan-500",
-    description: "Across all courses",
-  },
-  {
-    icon: BookOpen,
-    label: "Active Courses",
-    value: "4",
-    change: "+1",
-    changePercent: "+33%",
-    trend: "up" as const,
-    color: "from-purple-500 to-pink-500",
-    description: "This semester",
-  },
-  {
-    icon: Target,
-    label: "Avg. Performance",
-    value: "86.5%",
-    change: "+3.2%",
-    changePercent: "+3.8%",
-    trend: "up" as const,
-    color: "from-green-500 to-emerald-500",
-    description: "Class average",
-  },
-  {
-    icon: Calendar,
-    label: "Attendance Rate",
-    value: "91.2%",
-    change: "+2.5%",
-    changePercent: "+2.8%",
-    trend: "up" as const,
-    color: "from-orange-500 to-yellow-500",
-    description: "This week",
-  },
-];
-
-const todaySchedule = [
-  {
-    id: 1,
-    course: "CS 101",
-    title: "Introduction to Computer Science",
-    time: "10:00 AM - 11:30 AM",
-    room: "Engineering 201",
-    students: 45,
-    status: "upcoming",
-    color: "from-blue-500 to-cyan-500",
-  },
-  {
-    id: 2,
-    course: "CS 201",
-    title: "Data Structures & Algorithms",
-    time: "2:00 PM - 3:30 PM",
-    room: "Engineering 305",
-    students: 38,
-    status: "upcoming",
-    color: "from-purple-500 to-pink-500",
-  },
-];
-
-const upcomingDeadlines = [
-  {
-    id: 1,
-    title: "CS 301 - Assignment 5",
-    dueDate: "Tomorrow, 11:59 PM",
-    submissions: "28/32",
-    percentage: 87.5,
-    priority: "high",
-  },
-  {
-    id: 2,
-    title: "CS 101 - Quiz 3 Grading",
-    dueDate: "In 3 days",
-    submissions: "45/45",
-    percentage: 100,
-    priority: "medium",
-  },
-  {
-    id: 3,
-    title: "CS 201 - Project Milestone",
-    dueDate: "In 5 days",
-    submissions: "15/38",
-    percentage: 39.5,
-    priority: "medium",
-  },
-];
-
-const recentSubmissions = [
-  {
-    student: "Emily Chen",
-    course: "CS 301",
-    assignment: "Assignment 5",
-    grade: 98,
-    time: "10 minutes ago",
-    avatar: "EC",
-  },
-  {
-    student: "David Lee",
-    course: "CS 201",
-    assignment: "Quiz 4",
-    grade: 92,
-    time: "25 minutes ago",
-    avatar: "DL",
-  },
-  {
-    student: "Sarah Johnson",
-    course: "CS 101",
-    assignment: "Lab 3",
-    grade: 88,
-    time: "1 hour ago",
-    avatar: "SJ",
-  },
-  {
-    student: "Mike Brown",
-    course: "CS 301",
-    assignment: "Assignment 4",
-    grade: 75,
-    time: "2 hours ago",
-    avatar: "MB",
-  },
-];
-
-const coursesOverview = [
-  {
-    code: "CS 101",
-    name: "Intro to Computer Science",
-    students: 45,
-    avgGrade: 88,
-    attendance: 98,
-    pending: 3,
-    color: "from-blue-500 to-cyan-500",
-    trend: "up",
-  },
-  {
-    code: "CS 201",
-    name: "Data Structures",
-    students: 38,
-    avgGrade: 82,
-    attendance: 92,
-    pending: 8,
-    color: "from-purple-500 to-pink-500",
-    trend: "up",
-  },
-  {
-    code: "CS 301",
-    name: "Database Systems",
-    students: 32,
-    avgGrade: 85,
-    attendance: 95,
-    pending: 4,
-    color: "from-green-500 to-emerald-500",
-    trend: "up",
-  },
-  {
-    code: "CS 401",
-    name: "Machine Learning",
-    students: 28,
-    avgGrade: 90,
-    attendance: 89,
-    pending: 5,
-    color: "from-orange-500 to-red-500",
-    trend: "down",
-  },
-];
+import { useDashboardData } from "@/lib/hooks/useDashboardData";
 
 const aiInsights = [
   {
@@ -220,21 +50,76 @@ const aiInsights = [
   },
 ];
 
-const quickActions = [
-  { label: "Start Attendance", href: "/dashboard/attendance", icon: Calendar, count: 2, color: "from-blue-500 to-cyan-500" },
-  { label: "Grade Assignments", href: "/dashboard/grades", icon: FileText, count: 12, color: "from-purple-500 to-pink-500" },
-  { label: "Create Course", href: "/dashboard/courses/create", icon: Plus, count: null, color: "from-green-500 to-emerald-500" },
-  { label: "View Messages", href: "/dashboard/messages", icon: MessageSquare, count: 8, color: "from-orange-500 to-yellow-500" },
-];
-
 export default function DashboardPage() {
   const prefersReducedMotion = useReducedMotion();
   const [currentTime, setCurrentTime] = useState(new Date());
+  const { loading, error, profile, stats, todaySchedule, upcomingDeadlines, recentSubmissions, coursesOverview } = useDashboardData();
   
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // Build dashboard stats from fetched data
+  const dashboardStats = stats ? [
+    {
+      icon: Users,
+      label: "Total Students",
+      value: stats.totalStudents.toString(),
+      change: "+0",
+      changePercent: "+0%",
+      trend: "up" as const,
+      color: "from-blue-500 to-cyan-500",
+      description: "Across all courses",
+    },
+    {
+      icon: BookOpen,
+      label: "Active Courses",
+      value: stats.activeCourses.toString(),
+      change: "+0",
+      changePercent: "+0%",
+      trend: "up" as const,
+      color: "from-purple-500 to-pink-500",
+      description: "This semester",
+    },
+    {
+      icon: Target,
+      label: "Avg. Performance",
+      value: `${stats.avgPerformance.toFixed(1)}%`,
+      change: "+0%",
+      changePercent: "+0%",
+      trend: "up" as const,
+      color: "from-green-500 to-emerald-500",
+      description: "Class average",
+    },
+    {
+      icon: Calendar,
+      label: "Attendance Rate",
+      value: `${stats.attendanceRate.toFixed(1)}%`,
+      change: "+0%",
+      changePercent: "+0%",
+      trend: "up" as const,
+      color: "from-orange-500 to-yellow-500",
+      description: "This week",
+    },
+  ] : [];
+
+  // Get user's name for greeting
+  const getUserName = () => {
+    if (!profile) return "Lecturer";
+    const nameParts = profile.full_name.split(" ");
+    // Extract title if present (Dr., Prof., etc.)
+    const title = nameParts[0].match(/^(Dr|Prof|Professor)\.?$/i) ? nameParts[0] : "";
+    const firstName = title ? nameParts[1] : nameParts[0];
+    return title ? `${title}. ${firstName}` : firstName;
+  };
+
+  const quickActions = [
+    { label: "Start Attendance", href: "/dashboard/attendance", icon: Calendar, count: null, color: "from-blue-500 to-cyan-500" },
+    { label: "Grade Assignments", href: "/dashboard/grades", icon: FileText, count: null, color: "from-purple-500 to-pink-500" },
+    { label: "Create Course", href: "/dashboard/courses/create", icon: Plus, count: null, color: "from-green-500 to-emerald-500" },
+    { label: "View Messages", href: "/dashboard/messages", icon: MessageSquare, count: null, color: "from-orange-500 to-yellow-500" },
+  ];
 
   const getGreeting = () => {
     const hour = currentTime.getHours();
@@ -304,7 +189,7 @@ export default function DashboardPage() {
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div>
                 <h1 className="mb-2 text-4xl font-bold text-neutral-900 dark:text-white">
-                  {getGreeting()}, Dr. Sarah! 👋
+                  {getGreeting()}, {loading ? "..." : getUserName()}! 👋
                 </h1>
                 <p className="text-lg text-neutral-600 dark:text-neutral-400">
                   {currentTime.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
@@ -328,14 +213,31 @@ export default function DashboardPage() {
             </div>
           </motion.div>
 
+          {/* Loading State */}
+          {loading && (
+            <div className="flex items-center justify-center py-24">
+              <Loader2 className="h-8 w-8 animate-spin text-purple-600 dark:text-purple-400" />
+              <span className="ml-3 text-lg text-neutral-600 dark:text-neutral-400">Loading dashboard...</span>
+            </div>
+          )}
+
+          {/* Error State */}
+          {error && !loading && (
+            <div className="mb-8 rounded-xl border border-red-500/20 bg-red-500/10 p-4 text-center">
+              <AlertCircle className="mx-auto mb-2 h-6 w-6 text-red-600 dark:text-red-400" />
+              <p className="text-red-600 dark:text-red-400">{error}</p>
+            </div>
+          )}
+
           {/* Stats Grid */}
-          <motion.div
-            initial={prefersReducedMotion ? undefined : { opacity: 0, y: 20 }}
-            animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.1 }}
-            className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4"
-          >
-            {dashboardStats.map((stat, index) => {
+          {!loading && !error && (
+            <motion.div
+              initial={prefersReducedMotion ? undefined : { opacity: 0, y: 20 }}
+              animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4"
+            >
+              {dashboardStats.map((stat, index) => {
               const Icon = stat.icon;
               const TrendIcon = stat.trend === "up" ? TrendingUp : TrendingDown;
               
@@ -375,10 +277,12 @@ export default function DashboardPage() {
                 </motion.div>
               );
             })}
-          </motion.div>
+            </motion.div>
+          )}
 
           {/* Main Content Grid */}
-          <div className="grid gap-8 lg:grid-cols-3">
+          {!loading && !error && (
+            <div className="grid gap-8 lg:grid-cols-3">
             {/* Left Column - Primary Content */}
             <div className="space-y-8 lg:col-span-2">
               {/* Today's Schedule */}
@@ -440,13 +344,13 @@ export default function DashboardPage() {
                             </div>
                             <div className="flex gap-2">
                               <Link
-                                href={`/dashboard/courses/${class_item.id}`}
+                                href={`/dashboard/courses/${(class_item as any).courseId || class_item.id}`}
                                 className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 transition hover:bg-white/10"
                               >
                                 <BookOpen className="h-5 w-5 text-neutral-700 dark:text-neutral-300" />
                               </Link>
                               <Link
-                                href={`/dashboard/courses/${class_item.id}/meet`}
+                                href={`/dashboard/courses/${(class_item as any).courseId || class_item.id}/meet`}
                                 className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 transition hover:bg-white/10"
                               >
                                 <Video className="h-5 w-5 text-neutral-700 dark:text-neutral-300" />
@@ -487,48 +391,68 @@ export default function DashboardPage() {
                   </Link>
                 </div>
                 
-                <div className="grid gap-4 md:grid-cols-2">
-                  {coursesOverview.map((course, index) => (
-                    <motion.div
-                      key={course.code}
-                      initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.95 }}
-                      animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.5, delay: 0.7 + index * 0.1 }}
-                      className="group overflow-hidden rounded-2xl border border-white/20 bg-white/5 transition hover:bg-white/10 dark:border-white/10 dark:bg-white/5"
+                {coursesOverview.length > 0 ? (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {coursesOverview.map((course, index) => (
+                      <Link
+                        key={course.id}
+                        href={`/dashboard/courses/${course.id}`}
+                      >
+                        <motion.div
+                          initial={prefersReducedMotion ? undefined : { opacity: 0, scale: 0.95 }}
+                          animate={prefersReducedMotion ? undefined : { opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.5, delay: 0.7 + index * 0.1 }}
+                          className="group overflow-hidden rounded-2xl border border-white/20 bg-white/5 transition hover:bg-white/10 dark:border-white/10 dark:bg-white/5"
+                        >
+                        <div className={`h-1 bg-gradient-to-r ${course.color}`} />
+                        <div className="p-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <div className={`rounded-lg bg-gradient-to-br ${course.color} px-3 py-1 text-sm font-bold text-white`}>
+                              {course.code}
+                            </div>
+                            {course.pending > 0 && (
+                              <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
+                                {course.pending} pending
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="mb-3 font-bold text-neutral-900 dark:text-white">
+                            {course.name}
+                          </h3>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div>
+                              <div className="text-xs text-neutral-600 dark:text-neutral-400">Students</div>
+                              <div className="mt-1 font-bold text-neutral-900 dark:text-white">{course.students}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-neutral-600 dark:text-neutral-400">Avg Grade</div>
+                              <div className="mt-1 font-bold text-neutral-900 dark:text-white">{course.avgGrade}%</div>
+                            </div>
+                            <div>
+                              <div className="text-xs text-neutral-600 dark:text-neutral-400">Attendance</div>
+                              <div className="mt-1 font-bold text-neutral-900 dark:text-white">{course.attendance}%</div>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-12 text-center">
+                    <BookOpen className="mx-auto mb-4 h-12 w-12 text-neutral-400" />
+                    <p className="text-neutral-600 dark:text-neutral-400 mb-4">
+                      No courses found. Create your first course to get started!
+                    </p>
+                    <Link
+                      href="/dashboard/courses/create"
+                      className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 px-6 py-2 text-sm font-semibold text-white shadow-lg transition hover:-translate-y-0.5 hover:shadow-xl"
                     >
-                      <div className={`h-1 bg-gradient-to-r ${course.color}`} />
-                      <div className="p-4">
-                        <div className="mb-3 flex items-center justify-between">
-                          <div className={`rounded-lg bg-gradient-to-br ${course.color} px-3 py-1 text-sm font-bold text-white`}>
-                            {course.code}
-                          </div>
-                          {course.pending > 0 && (
-                            <span className="rounded-full bg-red-500 px-2 py-0.5 text-xs font-bold text-white">
-                              {course.pending} pending
-                            </span>
-                          )}
-                        </div>
-                        <h3 className="mb-3 font-bold text-neutral-900 dark:text-white">
-                          {course.name}
-                        </h3>
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div>
-                            <div className="text-xs text-neutral-600 dark:text-neutral-400">Students</div>
-                            <div className="mt-1 font-bold text-neutral-900 dark:text-white">{course.students}</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-neutral-600 dark:text-neutral-400">Avg Grade</div>
-                            <div className="mt-1 font-bold text-neutral-900 dark:text-white">{course.avgGrade}%</div>
-                          </div>
-                          <div>
-                            <div className="text-xs text-neutral-600 dark:text-neutral-400">Attendance</div>
-                            <div className="mt-1 font-bold text-neutral-900 dark:text-white">{course.attendance}%</div>
-                          </div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+                      <Plus className="h-4 w-4" />
+                      Create Course
+                    </Link>
+                  </div>
+                )}
               </motion.div>
 
               {/* AI Insights */}
@@ -678,8 +602,9 @@ export default function DashboardPage() {
                 <h2 className="mb-4 text-lg font-bold text-neutral-900 dark:text-white">
                   ⏰ Upcoming Deadlines
                 </h2>
-                <div className="space-y-4">
-                  {upcomingDeadlines.map((deadline) => (
+                {upcomingDeadlines.length > 0 ? (
+                  <div className="space-y-4">
+                    {upcomingDeadlines.map((deadline) => (
                     <div
                       key={deadline.id}
                       className="rounded-xl border border-white/10 bg-white/5 p-4 dark:bg-white/5"
@@ -714,8 +639,16 @@ export default function DashboardPage() {
                         />
                       </div>
                     </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center">
+                    <FileText className="mx-auto mb-2 h-8 w-8 text-neutral-400" />
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      No upcoming deadlines
+                    </p>
+                  </div>
+                )}
               </motion.div>
 
               {/* Recent Submissions */}
@@ -728,8 +661,9 @@ export default function DashboardPage() {
                 <h2 className="mb-4 text-lg font-bold text-neutral-900 dark:text-white">
                   📝 Recent Submissions
                 </h2>
-                <div className="space-y-3">
-                  {recentSubmissions.map((submission, index) => (
+                {recentSubmissions.length > 0 ? (
+                  <div className="space-y-3">
+                    {recentSubmissions.map((submission, index) => (
                     <div
                       key={index}
                       className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-3 dark:bg-white/5"
@@ -752,11 +686,20 @@ export default function DashboardPage() {
                         <p className="text-xs text-neutral-500">{submission.time}</p>
                       </div>
                     </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center">
+                    <FileText className="mx-auto mb-2 h-8 w-8 text-neutral-400" />
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                      No recent submissions
+                    </p>
+                  </div>
+                )}
               </motion.div>
             </div>
           </div>
+          )}
         </div>
       </main>
     </div>

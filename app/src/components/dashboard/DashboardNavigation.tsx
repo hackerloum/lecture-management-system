@@ -28,6 +28,8 @@ import { useRouter, usePathname } from "next/navigation";
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useTheme } from "@/providers/theme-provider";
 import NotificationsPanel, { Notification } from "./NotificationsPanel";
+import { useUserProfile } from "@/lib/hooks/useUserProfile";
+import { Loader2 } from "lucide-react";
 
 interface NavLink {
   href: string;
@@ -49,13 +51,7 @@ const navLinks: NavLink[] = [
   { href: "/dashboard/messages", label: "Messages", icon: MessageSquare, category: "main" },
 ];
 
-// Mock user data - Replace with real auth context
-const currentUser = {
-  name: "Dr. Sarah Johnson",
-  email: "sarah.johnson@university.edu",
-  role: "Professor",
-  avatar: "SJ",
-};
+// User profile will be fetched from hook
 
 // Mock notifications with real page links
 const initialNotifications: Notification[] = [
@@ -138,6 +134,7 @@ export const DashboardNavigation = () => {
   const { scrollY } = useScroll();
   const backgroundOpacity = useTransform(scrollY, [0, 80], [0.7, 0.95]);
   const borderOpacity = useTransform(scrollY, [0, 80], [0.1, 0.3]);
+  const { profile, loading: profileLoading, getAvatarInitials, getDisplayName } = useUserProfile();
 
   const isDark = useMemo(() => resolvedTheme === "dark", [resolvedTheme]);
   const backgroundColor = useMotionTemplate`rgba(${
@@ -155,6 +152,13 @@ export const DashboardNavigation = () => {
   const [notifications, setNotifications] = useState<Notification[]>(initialNotifications);
   const moreMenuRef = useRef<HTMLDivElement>(null);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  // Get user info with fallbacks
+  const userAvatar = profile ? getAvatarInitials(profile.full_name) : "U";
+  const userDisplayName = profile ? getDisplayName(profile.full_name, true) : "Lecturer";
+  const userFullName = profile?.full_name || "User";
+  const userEmail = profile?.email || "";
+  const userRole = profile?.role || "Lecturer";
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -357,14 +361,14 @@ export const DashboardNavigation = () => {
                   className="flex min-w-fit items-center gap-2 whitespace-nowrap rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 transition-all hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-800 dark:hover:bg-neutral-700"
                 >
                   <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-blue-500 text-xs font-bold text-white">
-                    {currentUser.avatar}
+                    {profileLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : userAvatar}
                   </div>
                   <div className="hidden flex-col items-start xl:flex">
                     <span className="text-xs font-semibold text-neutral-900 dark:text-white">
-                      Dr. Sarah
+                      {profileLoading ? "..." : userDisplayName}
                     </span>
                     <span className="text-[10px] text-neutral-600 dark:text-neutral-400">
-                      Professor
+                      {profileLoading ? "..." : userRole}
                     </span>
                   </div>
                   <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-neutral-600 transition-transform dark:text-neutral-400 ${profileOpen ? "rotate-180" : ""}`} />
@@ -381,15 +385,15 @@ export const DashboardNavigation = () => {
                     >
                       <div className="border-b border-neutral-200 px-4 py-3 dark:border-neutral-700">
                         <div className="font-semibold text-neutral-900 dark:text-white">
-                          {currentUser.name}
+                          {profileLoading ? "Loading..." : userFullName}
                         </div>
                         <div className="text-sm text-neutral-600 dark:text-neutral-400">
-                          {currentUser.email}
+                          {profileLoading ? "..." : userEmail}
                         </div>
                       </div>
                       <div className="p-2">
                         <Link
-                          href="/dashboard/profile"
+                          href="/dashboard/settings"
                           onClick={() => setProfileOpen(false)}
                           className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-neutral-700 transition-all hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
                         >
@@ -456,14 +460,14 @@ export const DashboardNavigation = () => {
                 <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-purple-500 to-blue-500 text-sm font-bold text-white">
-                      {currentUser.avatar}
+                      {profileLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : userAvatar}
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-neutral-900 dark:text-white">
-                        {currentUser.name}
+                        {profileLoading ? "Loading..." : userFullName}
                       </div>
                       <div className="text-xs text-neutral-600 dark:text-neutral-400">
-                        {currentUser.role}
+                        {profileLoading ? "..." : userRole}
                       </div>
                     </div>
                   </div>

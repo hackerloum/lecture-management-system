@@ -21,10 +21,12 @@ import {
   Copy,
   Edit,
   Trash2,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 // Days of the week
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -37,206 +39,270 @@ const timeSlots = [
   "04:00 PM", "05:00 PM", "06:00 PM", "07:00 PM",
 ];
 
-// Mock schedule data
-const scheduleData = [
-  {
-    id: 1,
-    course: "CS 101",
-    title: "Introduction to Computer Science",
-    day: "Monday",
-    startTime: "10:00 AM",
-    endTime: "11:30 AM",
-    room: "Engineering 201",
-    building: "Main Campus",
-    students: 45,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-blue-500 to-cyan-500",
-    type: "Lecture",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 2,
-    course: "CS 101",
-    title: "Introduction to Computer Science",
-    day: "Wednesday",
-    startTime: "10:00 AM",
-    endTime: "11:30 AM",
-    room: "Engineering 201",
-    building: "Main Campus",
-    students: 45,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-blue-500 to-cyan-500",
-    type: "Lecture",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 3,
-    course: "CS 201",
-    title: "Data Structures & Algorithms",
-    day: "Tuesday",
-    startTime: "02:00 PM",
-    endTime: "03:30 PM",
-    room: "Engineering 305",
-    building: "Main Campus",
-    students: 38,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-purple-500 to-pink-500",
-    type: "Lecture",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 4,
-    course: "CS 201",
-    title: "Data Structures & Algorithms",
-    day: "Thursday",
-    startTime: "02:00 PM",
-    endTime: "03:30 PM",
-    room: "Engineering 305",
-    building: "Main Campus",
-    students: 38,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-purple-500 to-pink-500",
-    type: "Lecture",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 5,
-    course: "CS 301",
-    title: "Database Management Systems",
-    day: "Wednesday",
-    startTime: "01:00 PM",
-    endTime: "02:30 PM",
-    room: "Engineering 410",
-    building: "Main Campus",
-    students: 32,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-green-500 to-emerald-500",
-    type: "Lecture",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 6,
-    course: "CS 301",
-    title: "Database Management Systems",
-    day: "Friday",
-    startTime: "01:00 PM",
-    endTime: "02:30 PM",
-    room: "Engineering 410",
-    building: "Main Campus",
-    students: 32,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-green-500 to-emerald-500",
-    type: "Lecture",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 7,
-    course: "CS 401",
-    title: "Machine Learning",
-    day: "Monday",
-    startTime: "03:00 PM",
-    endTime: "04:30 PM",
-    room: "Engineering 505",
-    building: "Main Campus",
-    students: 28,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-orange-500 to-red-500",
-    type: "Lecture",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 8,
-    course: "CS 401",
-    title: "Machine Learning",
-    day: "Thursday",
-    startTime: "03:00 PM",
-    endTime: "04:30 PM",
-    room: "Engineering 505",
-    building: "Main Campus",
-    students: 28,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-orange-500 to-red-500",
-    type: "Lecture",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 9,
-    course: "Office Hours",
-    title: "Student Consultations",
-    day: "Tuesday",
-    startTime: "10:00 AM",
-    endTime: "12:00 PM",
-    room: "Office 301",
-    building: "Faculty Building",
-    students: null,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-yellow-500 to-orange-500",
-    type: "Office Hours",
-    recurring: true,
-    semester: "Spring 2025",
-  },
-  {
-    id: 10,
-    course: "Office Hours",
-    title: "Student Consultations",
-    day: "Friday",
-    startTime: "10:00 AM",
-    endTime: "12:00 PM",
-    room: "Office 301",
-    building: "Faculty Building",
-    students: null,
-    instructor: "Dr. Sarah Johnson",
-    color: "from-yellow-500 to-orange-500",
-    type: "Office Hours",
-    recurring: true,
-    semester: "Spring 2025",
-  },
+// Color mapping for courses
+const colorMap = [
+  "from-blue-500 to-cyan-500",
+  "from-purple-500 to-pink-500",
+  "from-green-500 to-emerald-500",
+  "from-orange-500 to-red-500",
+  "from-indigo-500 to-purple-500",
+  "from-yellow-500 to-orange-500",
+  "from-teal-500 to-cyan-500",
 ];
 
-const upcomingEvents = [
-  {
-    id: 1,
-    title: "CS 301 - Midterm Exam",
-    date: "Tomorrow, 1:00 PM",
-    location: "Engineering 410",
-    type: "exam",
-    priority: "high",
-  },
-  {
-    id: 2,
-    title: "Faculty Meeting",
-    date: "Friday, 3:00 PM",
-    location: "Conference Room A",
-    type: "meeting",
-    priority: "medium",
-  },
-  {
-    id: 3,
-    title: "CS 101 - Guest Lecture",
-    date: "Next Monday, 10:00 AM",
-    location: "Engineering 201",
-    type: "lecture",
-    priority: "medium",
-  },
-];
+interface ScheduleItem {
+  id: string;
+  course: string;
+  title: string;
+  day: string;
+  startTime: string;
+  endTime: string;
+  room: string;
+  building: string;
+  students: number | null;
+  instructor: string;
+  color: string;
+  type: string;
+  recurring: boolean;
+  semester: string;
+  courseId: string;
+}
+
+// Helper function to convert TIME to 12-hour format
+const formatTime = (time: string): string => {
+  const [hours, minutes] = time.split(":");
+  const hour = parseInt(hours, 10);
+  const period = hour >= 12 ? "PM" : "AM";
+  const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${displayHour.toString().padStart(2, "0")}:${minutes} ${period}`;
+};
+
+// Helper function to convert day_of_week (0-6, 0=Sunday) to day name
+const getDayName = (dayOfWeek: number): string => {
+  // Database: 0=Sunday, 1=Monday, ..., 6=Saturday
+  // Our array: Monday=0, Tuesday=1, ..., Sunday=6
+  const dayMap = [6, 0, 1, 2, 3, 4, 5]; // Map DB day to array index
+  return daysOfWeek[dayMap[dayOfWeek]] || daysOfWeek[0];
+};
+
+// Helper function to get color for course
+const getCourseColor = (courseId: string, courseColor?: string): string => {
+  if (courseColor) {
+    // Map common color names to gradient classes
+    const colorNameMap: Record<string, string> = {
+      blue: "from-blue-500 to-cyan-500",
+      purple: "from-purple-500 to-pink-500",
+      green: "from-green-500 to-emerald-500",
+      orange: "from-orange-500 to-red-500",
+      yellow: "from-yellow-500 to-orange-500",
+      indigo: "from-indigo-500 to-purple-500",
+      teal: "from-teal-500 to-cyan-500",
+    };
+    return colorNameMap[courseColor] || colorMap[0];
+  }
+  // Use hash of courseId to get consistent color
+  const hash = courseId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return colorMap[hash % colorMap.length];
+};
+
+// Helper function to format schedule type
+const formatScheduleType = (type: string): string => {
+  const typeMap: Record<string, string> = {
+    lecture: "Lecture",
+    lab: "Lab Session",
+    tutorial: "Tutorial",
+    office_hours: "Office Hours",
+    exam: "Exam",
+    meeting: "Meeting",
+  };
+  return typeMap[type] || type.charAt(0).toUpperCase() + type.slice(1);
+};
 
 export default function SchedulePage() {
   const prefersReducedMotion = useReducedMotion();
   const [viewMode, setViewMode] = useState<"week" | "list">("week");
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [currentWeek, setCurrentWeek] = useState(0);
+  const [scheduleData, setScheduleData] = useState<ScheduleItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
 
   // Get current date
   const today = new Date();
   const currentDayName = daysOfWeek[today.getDay() === 0 ? 6 : today.getDay() - 1];
+
+  // Fetch schedule data from database
+  useEffect(() => {
+    async function fetchScheduleData() {
+      try {
+        setLoading(true);
+        setError(null);
+        const supabase = createSupabaseBrowserClient();
+
+        // Get current user
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          throw new Error("Not authenticated");
+        }
+
+        // Fetch courses where user is a collaborator
+        const { data: collaboratorData, error: collaboratorError } = await supabase
+          .from("course_collaborators")
+          .select("course_id")
+          .eq("profile_id", user.id);
+
+        if (collaboratorError) {
+          throw new Error("Failed to fetch courses");
+        }
+
+        const courseIds = collaboratorData?.map((c) => c.course_id) || [];
+
+        if (courseIds.length === 0) {
+          setScheduleData([]);
+          setUpcomingEvents([]);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch schedules for these courses
+        const { data: schedules, error: schedulesError } = await supabase
+          .from("schedules")
+          .select(`
+            id,
+            course_id,
+            day_of_week,
+            start_time,
+            end_time,
+            room,
+            building,
+            type,
+            recurring,
+            instructor_id,
+            courses (
+              id,
+              code,
+              name,
+              color,
+              semester,
+              year
+            )
+          `)
+          .in("course_id", courseIds)
+          .order("day_of_week", { ascending: true })
+          .order("start_time", { ascending: true });
+
+        // Fetch instructor profiles separately
+        const instructorIds = [...new Set((schedules || []).map((s: any) => s.instructor_id).filter(Boolean))];
+        const instructorProfiles = new Map<string, { full_name: string }>();
+        
+        if (instructorIds.length > 0) {
+          const { data: profiles, error: profilesError } = await supabase
+            .from("profiles")
+            .select("id, full_name")
+            .in("id", instructorIds);
+
+          if (!profilesError && profiles) {
+            profiles.forEach((profile) => {
+              instructorProfiles.set(profile.id, { full_name: profile.full_name });
+            });
+          }
+        }
+
+        if (schedulesError) {
+          throw new Error("Failed to fetch schedules");
+        }
+
+        // Fetch student counts for each course
+        const { data: enrollments, error: enrollmentsError } = await supabase
+          .from("course_enrollments")
+          .select("course_id, student_id")
+          .in("course_id", courseIds)
+          .eq("status", "active");
+
+        if (enrollmentsError) {
+          console.error("Error fetching enrollments:", enrollmentsError);
+        }
+
+        // Count students per course
+        const studentCounts = new Map<string, number>();
+        enrollments?.forEach((enrollment) => {
+          const count = studentCounts.get(enrollment.course_id) || 0;
+          studentCounts.set(enrollment.course_id, count + 1);
+        });
+
+        // Transform database data to UI format
+        const transformedSchedules: ScheduleItem[] = (schedules || []).map((schedule: any) => {
+          const course = schedule.courses;
+          const instructor = schedule.instructor_id ? instructorProfiles.get(schedule.instructor_id) : null;
+          const studentCount = studentCounts.get(schedule.course_id) || null;
+
+          return {
+            id: schedule.id,
+            course: course?.code || "Unknown",
+            title: course?.name || "Unknown Course",
+            day: getDayName(schedule.day_of_week),
+            startTime: formatTime(schedule.start_time),
+            endTime: formatTime(schedule.end_time),
+            room: schedule.room || "TBA",
+            building: schedule.building || "",
+            students: schedule.type === "office_hours" ? null : studentCount,
+            instructor: instructor?.full_name || "TBA",
+            color: getCourseColor(schedule.course_id, course?.color),
+            type: formatScheduleType(schedule.type),
+            recurring: schedule.recurring ?? true,
+            semester: course ? `${course.semester} ${course.year}` : "",
+            courseId: schedule.course_id,
+          };
+        });
+
+        setScheduleData(transformedSchedules);
+
+        // Generate upcoming events from schedules
+        const events: any[] = [];
+        const now = new Date();
+        const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+
+        transformedSchedules.forEach((schedule) => {
+          const scheduleDayIndex = daysOfWeek.indexOf(schedule.day);
+          const currentDayIndex = today.getDay() === 0 ? 6 : today.getDay() - 1;
+          const daysUntil = (scheduleDayIndex - currentDayIndex + 7) % 7;
+
+          if (daysUntil <= 7) {
+            const eventDate = new Date(now);
+            eventDate.setDate(now.getDate() + daysUntil);
+
+            let dateLabel = "";
+            if (daysUntil === 0) {
+              dateLabel = "Today";
+            } else if (daysUntil === 1) {
+              dateLabel = "Tomorrow";
+            } else {
+              dateLabel = schedule.day;
+            }
+
+            events.push({
+              id: schedule.id,
+              title: `${schedule.course} - ${schedule.type}`,
+              date: `${dateLabel}, ${schedule.startTime}`,
+              location: schedule.room,
+              type: schedule.type.toLowerCase(),
+              priority: schedule.type === "Exam" ? "high" : "medium",
+            });
+          }
+        });
+
+        setUpcomingEvents(events.slice(0, 5)); // Limit to 5 events
+        setLoading(false);
+      } catch (err) {
+        console.error("Error fetching schedule data:", err);
+        setError(err instanceof Error ? err.message : "Failed to load schedule");
+        setLoading(false);
+      }
+    }
+
+    void fetchScheduleData();
+  }, []);
 
   // Helper to convert time to 24-hour format for comparison
   const timeTo24Hour = (time: string) => {
@@ -276,12 +342,40 @@ export default function SchedulePage() {
       const duration = (timeTo24Hour(item.endTime) - timeTo24Hour(item.startTime)) / 60;
       return acc + duration;
     }, 0),
-    totalStudents: [...new Set(scheduleData.filter((s) => s.students).map((s) => s.course))].reduce((acc, course) => {
-      const courseData = scheduleData.find((s) => s.course === course);
+    totalStudents: [...new Set(scheduleData.filter((s) => s.students).map((s) => s.courseId))].reduce((acc, courseId) => {
+      const courseData = scheduleData.find((s) => s.courseId === courseId && s.students);
       return acc + (courseData?.students || 0);
     }, 0),
     officeHours: scheduleData.filter((s) => s.type === "Office Hours").length,
   };
+
+  if (loading) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
+        <DashboardNavigation />
+        <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-24 sm:px-6 lg:py-32">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 animate-spin text-purple-600 dark:text-purple-400" />
+            <p className="text-lg text-neutral-600 dark:text-neutral-400">Loading schedule...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
+        <DashboardNavigation />
+        <main className="relative z-10 flex min-h-screen items-center justify-center px-4 py-24 sm:px-6 lg:py-32">
+          <div className="flex flex-col items-center gap-4">
+            <AlertCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+            <p className="text-lg text-neutral-600 dark:text-neutral-400">{error}</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
@@ -592,13 +686,13 @@ export default function SchedulePage() {
                                     </div>
                                     <div className="flex gap-2">
                                       <Link
-                                        href={`/dashboard/courses/${classItem.id}`}
+                                        href={`/dashboard/courses/${classItem.courseId}`}
                                         className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 transition hover:bg-white/10"
                                       >
                                         <BookOpen className="h-4 w-4 text-neutral-700 dark:text-neutral-300" />
                                       </Link>
                                       <Link
-                                        href={`/dashboard/courses/${classItem.id}/meet`}
+                                        href={`/dashboard/courses/${classItem.courseId}/meet`}
                                         className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 transition hover:bg-white/10"
                                       >
                                         <Video className="h-4 w-4 text-neutral-700 dark:text-neutral-300" />
