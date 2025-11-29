@@ -617,6 +617,9 @@ function GradesPageContent() {
   );
 }
 
+// Force dynamic rendering to prevent static generation issues with useSearchParams
+export const dynamic = 'force-dynamic';
+
 export default function GradesPage() {
   return (
     <Suspense fallback={

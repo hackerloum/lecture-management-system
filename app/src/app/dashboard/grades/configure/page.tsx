@@ -889,6 +889,9 @@ function ConfigureGradesPageContent() {
   );
 }
 
+// Force dynamic rendering to prevent static generation issues with useSearchParams
+export const dynamic = 'force-dynamic';
+
 export default function ConfigureGradesPage() {
   return (
     <Suspense fallback={
