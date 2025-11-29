@@ -18,7 +18,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
@@ -49,7 +49,7 @@ interface Student {
   status: "excellent" | "good" | "warning" | "critical";
 }
 
-export default function GradesPage() {
+function GradesPageContent() {
   const prefersReducedMotion = useReducedMotion();
   const searchParams = useSearchParams();
   const courseIdParam = searchParams.get("courseId");
@@ -617,3 +617,24 @@ export default function GradesPage() {
   );
 }
 
+export default function GradesPage() {
+  return (
+    <Suspense fallback={
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
+        <DashboardNavigation />
+        <main className="relative z-10 px-4 py-24 sm:px-6 lg:py-32">
+          <div className="mx-auto max-w-7xl">
+            <div className="flex flex-col items-center justify-center py-24">
+              <Loader2 className="mb-4 h-12 w-12 animate-spin text-purple-600 dark:text-purple-400" />
+              <p className="text-lg font-semibold text-neutral-900 dark:text-white">
+                Loading grades...
+              </p>
+            </div>
+          </div>
+        </main>
+      </div>
+    }>
+      <GradesPageContent />
+    </Suspense>
+  );
+}
