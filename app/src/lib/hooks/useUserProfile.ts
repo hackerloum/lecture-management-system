@@ -13,6 +13,7 @@ interface UserProfile {
   bio?: string;
   avatar_url?: string;
   employee_id?: string;
+  two_factor_enabled?: boolean;
 }
 
 export function useUserProfile() {
@@ -29,7 +30,7 @@ export function useUserProfile() {
         // Fetch user profile
         const { data: profileData, error: profileError } = await supabase
           .from("profiles")
-          .select("id, full_name, email, role, phone, department, bio, avatar_url, employee_id")
+          .select("id, full_name, email, role, phone, department, bio, avatar_url, employee_id, two_factor_enabled")
           .eq("id", userId)
           .single();
 
