@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 
 import { DashboardNavigation } from "@/components/dashboard/DashboardNavigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -44,7 +44,7 @@ interface Course {
   name: string;
 }
 
-export default function ConfigureGradesPage() {
+function ConfigureGradesPageContent() {
   const prefersReducedMotion = useReducedMotion();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -889,3 +889,26 @@ export default function ConfigureGradesPage() {
   );
 }
 
+export default function ConfigureGradesPage() {
+  return (
+    <Suspense fallback={
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-neutral-50 via-purple-50/30 to-blue-50/40 text-neutral-900 antialiased transition-colors duration-300 dark:from-[#0a0f1f] dark:via-[#0d1525] dark:to-[#0a0f1f] dark:text-white">
+        <DashboardNavigation />
+        <main className="relative z-10 px-4 py-24 sm:px-6 lg:py-32">
+          <div className="mx-auto max-w-6xl">
+            <div className="flex min-h-[400px] items-center justify-center">
+              <div className="text-center">
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-purple-600" />
+                <div className="mt-4 text-sm text-neutral-600 dark:text-neutral-400">
+                  Loading configuration...
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    }>
+      <ConfigureGradesPageContent />
+    </Suspense>
+  );
+}
